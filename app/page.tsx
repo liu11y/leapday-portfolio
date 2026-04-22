@@ -149,12 +149,17 @@ const Home = ({ collections, settings }: any) => {
         </div>
         
         <div className="relative z-10 text-center px-4 w-full">
-          <h1 className="text-5xl sm:text-7xl md:text-8xl lg:text-9xl font-normal tracking-tighter text-[#E7B84A] drop-shadow-2xl mb-4 uppercase">
-            {settings?.mainTitle || "leapday"}
-          </h1>
-          <p className="text-gray-300 tracking-[0.4em] uppercase text-[10px] md:text-sm font-light opacity-60">
-            {settings?.subtitle || "A Photography Journal"}
-          </p>
+          {/* 主标题和副标题只有在有内容时才渲染，移除了默认占位符 */}
+          {settings?.mainTitle && (
+            <h1 className="text-5xl sm:text-7xl md:text-8xl lg:text-9xl font-normal tracking-tighter text-[#E7B84A] drop-shadow-2xl mb-4 uppercase">
+              {settings.mainTitle}
+            </h1>
+          )}
+          {settings?.subtitle && (
+            <p className="text-gray-300 tracking-[0.4em] uppercase text-[10px] md:text-sm font-light opacity-60">
+              {settings.subtitle}
+            </p>
+          )}
         </div>
       </div>
 
@@ -304,7 +309,6 @@ export default function App() {
   const fetchData = async () => {
     setData((prev: any) => ({ ...prev, loading: true, error: false, isMock: false }));
     try {
-      // GROQ 查询新增拉取 bulkExternalUrls 字段
       const query = encodeURIComponent(`{
         "collections": *[_type == "collection"] | order(date desc) {
           _id, title, date, shortIntro, tags,
@@ -332,14 +336,11 @@ export default function App() {
       
       const { result } = await res.json();
 
-      // 核心：处理批量外链
       const formattedCollections = (result.collections || []).map((item: any) => {
-        // 1. 将回车换行分割成数组，并剔除空行
         const bulkUrls = item.bulkExternalUrls 
           ? item.bulkExternalUrls.split(/\r?\n/).map((u: string) => ({ url: u.trim() })).filter((img: any) => img.url)
           : [];
         
-        // 2. 将批量链接与单张上传的链接合并
         return {
           ...item,
           images: [...(item.images || []), ...bulkUrls]
@@ -349,7 +350,6 @@ export default function App() {
       setData({ collections: formattedCollections, settings: result.settings || {}, loading: false, error: false, isMock: false });
     } catch (err) {
       console.error("Fetch Error (可能是预览环境跨域限制，自动启用 Mock 数据):", err);
-      // 自动回退到模拟数据，确保预览环境正常运行
       setData({ collections: MOCK_DATA.collections, settings: MOCK_DATA.settings, loading: false, error: false, isMock: true });
     }
   };
@@ -377,7 +377,6 @@ export default function App() {
 
   return (
     <div className="antialiased bg-[#0a0a0a]">
-      {/* 路由视图渲染 */}
       {currentRoute === 'home' && <Home collections={data.collections} settings={data.settings} />}
       {currentRoute === 'detail' && activeCollection && <Detail collection={activeCollection} />}
       {currentRoute === 'archive' && <Archive collections={data.collections} />}
@@ -390,7 +389,6 @@ export default function App() {
         © {new Date().getFullYear()} LEAPDAY. ALL RIGHTS RESERVED.
         <br/><span className="mt-2 block opacity-40">Capturing Moments Through The Lens.</span>
         
-        {/* Mock 状态警告提示 */}
         {data.isMock && (
           <span className="mt-6 text-[#E7B84A] font-bold tracking-widest bg-[#E7B84A]/10 py-2 px-4 inline-block rounded-sm">
             ⚠️ 正在使用本地测试数据 (MOCK DATA) 预览
@@ -398,7 +396,6 @@ export default function App() {
         )}
       </footer>
 
-      {/* 隐藏的开发者数据查看面板（底部双击唤出） */}
       {showDebug && (
         <div className="fixed bottom-0 left-0 w-full p-6 bg-[#111] border-t border-[#E7B84A]/30 z-[9999] text-[10px] font-mono max-h-[50vh] overflow-auto shadow-2xl">
           <div className="flex justify-between mb-4 border-b border-white/10 pb-4">
