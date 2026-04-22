@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, LayoutGrid, Mail, RefreshCw, ChevronLeft, AlertCircle, Database } from 'lucide-react';
+import { ArrowLeft, LayoutGrid, Mail, ChevronLeft, AlertCircle, Database } from 'lucide-react';
 
 // --- 1. 全局配置参数 ---
 const PROJECT_ID = 'u6xbvj35';
@@ -12,10 +12,10 @@ const API_VERSION = '2024-04-21';
  * 顶级智能图片优化引擎
  * 支持 Sanity 原生裁剪、Cloudflare 极速图床、中文乱码修复、协议头自动补全
  */
-const optimizeImage = (url, width = 1200, quality = 75) => {
+const optimizeImage = (url: any, width = 1200, quality = 75) => {
   if (!url) return ""; 
   
-  let finalUrl = url.trim();
+  let finalUrl = String(url).trim();
 
   // 修复 1：自动补全协议头 (防止只填了域名)
   if (finalUrl.startsWith('leapday-images')) {
@@ -43,7 +43,7 @@ const optimizeImage = (url, width = 1200, quality = 75) => {
 };
 
 // --- 2. 渐进式模糊加载组件 ---
-const ProgressiveImage = ({ src, lqip, alt, imgClassName = "" }) => {
+const ProgressiveImage = ({ src, lqip, alt, imgClassName = "" }: any) => {
   const [isLoaded, setIsLoaded] = useState(false);
   const [error, setError] = useState(false);
 
@@ -86,7 +86,7 @@ const ProgressiveImage = ({ src, lqip, alt, imgClassName = "" }) => {
 
 // --- 3. 页面滚动出现动画钩子 ---
 const useFadeIn = () => {
-  const domRef = useRef(null);
+  const domRef = useRef<HTMLDivElement>(null);
   const [isVisible, setVisible] = useState(false);
   useEffect(() => {
     const observer = new IntersectionObserver(entries => {
@@ -95,10 +95,10 @@ const useFadeIn = () => {
     if (domRef.current) observer.observe(domRef.current);
     return () => observer.disconnect();
   }, []);
-  return [domRef, isVisible];
+  return [domRef, isVisible] as const;
 };
 
-const FadeInSection = ({ children, delay = 0, className = "" }) => {
+const FadeInSection = ({ children, delay = 0, className = "" }: any) => {
   const [ref, isVisible] = useFadeIn();
   return (
     <div ref={ref} className={`transition-all duration-1000 ease-out w-full ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'} ${className}`} style={{ transitionDelay: `${delay}ms` }}>
@@ -110,7 +110,7 @@ const FadeInSection = ({ children, delay = 0, className = "" }) => {
 // --- 4. 子页面组件 ---
 
 // 【首页视图】
-const Home = ({ collections, settings }) => {
+const Home = ({ collections, settings }: any) => {
   // 智能抓取首页背景图：优先视频 > 全局设置外链图 > 全局设置本地图 > 最新作品集封面外链 > 最新作品集封面本地图
   const heroImg = optimizeImage(
     settings?.heroImageUrl || settings?.heroImage || collections[0]?.coverImageUrl || collections[0]?.coverImage, 
@@ -118,7 +118,7 @@ const Home = ({ collections, settings }) => {
   );
   const heroVideo = settings?.heroVideo; 
 
-  const videoRef = useRef(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     if (videoRef.current && heroVideo) {
       videoRef.current.defaultMuted = true;
@@ -169,7 +169,7 @@ const Home = ({ collections, settings }) => {
         </FadeInSection>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-16 md:gap-32 w-full">
-          {collections.slice(0, 4).map((item, idx) => (
+          {collections.slice(0, 4).map((item: any, idx: number) => (
             <FadeInSection key={item._id} delay={idx * 100}>
               <a href={`#detail-${item._id}`} className="group cursor-pointer block">
                 <div className="relative aspect-[4/5] mb-8 shadow-2xl bg-gray-900 rounded-sm">
@@ -197,7 +197,7 @@ const Home = ({ collections, settings }) => {
 };
 
 // 【作品集详情视图】
-const Detail = ({ collection }) => {
+const Detail = ({ collection }: any) => {
   useEffect(() => { window.scrollTo(0, 0); }, [collection._id]);
 
   return (
@@ -216,14 +216,14 @@ const Detail = ({ collection }) => {
           <div className="flex justify-center gap-6 text-[10px] text-gray-600 uppercase tracking-widest font-mono flex-wrap">
             <span>{collection.date}</span>
             <div className="flex gap-2 flex-wrap justify-center">
-              {collection.tags?.map(t => <span key={t} className="px-2 border border-white/10 py-1 rounded-sm">#{t}</span>)}
+              {collection.tags?.map((t: string) => <span key={t} className="px-2 border border-white/10 py-1 rounded-sm">#{t}</span>)}
             </div>
           </div>
         </FadeInSection>
       </div>
       
       <div className="flex flex-col items-center gap-10 md:gap-32 pb-40">
-        {collection.images?.map((img, i) => (
+        {collection.images?.map((img: any, i: number) => (
           <FadeInSection key={i} className="max-w-6xl w-full px-0 md:px-10">
             <div className="bg-gray-900 shadow-2xl min-h-[30vh]">
               <ProgressiveImage src={optimizeImage(img.url, 1800)} lqip={img.lqip} alt={`${collection.title} - ${i}`} />
@@ -236,7 +236,7 @@ const Detail = ({ collection }) => {
 };
 
 // 【全部作品归档视图】
-const Archive = ({ collections }) => {
+const Archive = ({ collections }: any) => {
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
   return (
@@ -250,7 +250,7 @@ const Archive = ({ collections }) => {
 
       <div className="w-full max-w-7xl mx-auto">
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 md:gap-8">
-          {collections.map((item) => (
+          {collections.map((item: any) => (
             <FadeInSection key={item._id}>
               <a href={`#detail-${item._id}`} className="group block text-left">
                 <div className="relative aspect-square overflow-hidden mb-4 bg-gray-900 rounded-sm w-full">
@@ -310,13 +310,13 @@ const MOCK_DATA = {
 
 export default function App() {
   const [currentRoute, setCurrentRoute] = useState('home');
-  const [activeId, setActiveId] = useState(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
   
-  const [data, setData] = useState({ collections: [], settings: null, loading: true, error: false, isMock: false });
+  const [data, setData] = useState<any>({ collections: [], settings: null, loading: true, error: false, isMock: false });
   const [showDebug, setShowDebug] = useState(false);
 
   const fetchData = async () => {
-    setData(prev => ({ ...prev, loading: true, error: false, isMock: false }));
+    setData((prev: any) => ({ ...prev, loading: true, error: false, isMock: false }));
     try {
       const query = encodeURIComponent(`{
         "collections": *[_type == "collection"] | order(date desc) {
@@ -346,7 +346,7 @@ export default function App() {
       setData({ collections: result.collections || [], settings: result.settings || {}, loading: false, error: false, isMock: false });
     } catch (err) {
       console.error("Fetch Error (可能是预览环境跨域限制):", err);
-      setData(prev => ({ ...prev, loading: false, error: true }));
+      setData((prev: any) => ({ ...prev, loading: false, error: true }));
     }
   };
 
@@ -395,7 +395,7 @@ export default function App() {
     </div>
   );
 
-  const activeCollection = data.collections.find((c) => c._id === activeId);
+  const activeCollection = data.collections.find((c: any) => c._id === activeId);
 
   return (
     <div className="antialiased bg-[#0a0a0a]">
