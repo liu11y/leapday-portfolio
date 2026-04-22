@@ -3,24 +3,28 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, LayoutGrid, Mail, RefreshCw } from 'lucide-react';
 
-// --- 1. 配置参数 (Production Config) ---
+// --- 1. 配置参数 ---
 const PROJECT_ID = 'u6xbvj35';
 const DATASET = 'production';
 const API_VERSION = '2024-04-21';
 
-// 苹果级图片动态优化引擎 (稍微降低默认 quality 以适应国内网络，全面使用 webp)
-const optimizeImage = (url: string, width = 1200, quality = 75) => {
+// 智能图片优化引擎：兼容 Sanity 原生资源和 Cloudflare 外链
+const optimizeImage = (url, width = 1200, quality = 75) => {
   if (!url) return ""; 
-  return `${url}?w=${width}&q=${quality}&auto=format&fit=max`;
+  // 只有 Sanity 的图片才需要通过 API 动态裁剪
+  if (url.includes('cdn.sanity.io')) {
+    return `${url}?w=${width}&q=${quality}&auto=format&fit=max`;
+  }
+  // Cloudflare 等外链直接返回原图
+  return url;
 };
 
-// --- 2. 渐进式图片加载组件 (解决网络慢时的白屏痛点) ---
-const ProgressiveImage = ({ src, lqip, alt, imgClassName = "", containerClassName = "" }: any) => {
+// --- 2. 渐进式加载组件 ---
+const ProgressiveImage = ({ src, lqip, alt, imgClassName = "", containerClassName = "" }) => {
   const [isLoaded, setIsLoaded] = useState(false);
 
   return (
     <div className={`relative w-full h-full bg-[#111] overflow-hidden ${containerClassName}`}>
-      {/* 极低像素占位图 (LQIP) - 瞬间加载，带高斯模糊 */}
       {lqip && (
         <img
           src={lqip}
@@ -31,7 +35,6 @@ const ProgressiveImage = ({ src, lqip, alt, imgClassName = "", containerClassNam
           }`}
         />
       )}
-      {/* 实际高清大图 - 懒加载，完成后平滑显现 */}
       <img
         src={src}
         alt={alt}
@@ -47,7 +50,7 @@ const ProgressiveImage = ({ src, lqip, alt, imgClassName = "", containerClassNam
 
 // --- 3. 动画钩子 ---
 const useFadeIn = () => {
-  const domRef = useRef<HTMLDivElement>(null);
+  const domRef = useRef(null);
   const [isVisible, setVisible] = useState(false);
   
   useEffect(() => {
@@ -64,10 +67,10 @@ const useFadeIn = () => {
     return () => { if (current) observer.unobserve(current); };
   }, []);
   
-  return [domRef, isVisible] as const;
+  return [domRef, isVisible];
 };
 
-const FadeInSection = ({ children, delay = 0, className = "" }: any) => {
+const FadeInSection = ({ children, delay = 0, className = "" }) => {
   const [ref, isVisible] = useFadeIn();
   return (
     <div
@@ -85,14 +88,15 @@ const FadeInSection = ({ children, delay = 0, className = "" }: any) => {
 // --- 4. 页面组件 ---
 
 // 【首页】
-const Home = ({ collections, settings }: { collections: any[], settings: any }) => {
-  const heroImg = optimizeImage(settings?.heroImage || collections[0]?.coverImage, 2000, 85);
+const Home = ({ collections, settings }) => {
+  // 优先级：外部直链 > Sanity 上传图
+  const heroImg = optimizeImage(settings?.heroImageUrl || settings?.heroImage || collections[0]?.coverImageUrl || collections[0]?.coverImage, 2000, 85);
   const heroLqip = settings?.heroImageLqip || collections[0]?.coverImageLqip;
   const heroVideo = settings?.heroVideo; 
   const mainTitle = settings?.mainTitle || "leapday";
   const subTitle = settings?.subtitle || "";
 
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef = useRef(null);
 
   useEffect(() => {
     if (videoRef.current && heroVideo) {
@@ -117,11 +121,9 @@ const Home = ({ collections, settings }: { collections: any[], settings: any }) 
               muted 
               defaultMuted 
               playsInline  
-              poster={heroImg}
               className="w-full h-full object-cover opacity-60 md:opacity-50 scale-105"
             />
           ) : heroImg ? (
-            // 首屏图片也支持模糊加载
             <ProgressiveImage
               src={heroImg}
               lqip={heroLqip}
@@ -155,31 +157,35 @@ const Home = ({ collections, settings }: { collections: any[], settings: any }) 
         </FadeInSection>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-16 md:gap-32 w-full text-left">
-          {collections.map((collection: any, idx: number) => (
-            <FadeInSection key={collection._id} delay={idx * 100}>
-              <a href={`#detail-${collection._id}`} className="group cursor-pointer block w-full">
-                <div className="relative overflow-hidden rounded-sm aspect-[4/5] mb-6 shadow-[0_20px_50px_rgba(0,0,0,0.5)] w-full bg-gray-900">
-                  {collection.coverImage && (
-                    <ProgressiveImage
-                      src={optimizeImage(collection.coverImage, 1000)}
-                      lqip={collection.coverImageLqip}
-                      alt={collection.title}
-                      imgClassName="group-hover:scale-105 opacity-90 group-hover:opacity-100"
-                    />
-                  )}
-                  <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 hidden md:block pointer-events-none"
-                       style={{ background: `linear-gradient(to top, ${collection.dominantColor}aa, transparent)` }} />
-                </div>
-                <div className="flex flex-col sm:flex-row justify-between items-start gap-2 w-full text-left">
-                  <div className="pr-4 flex-1 text-left">
-                    <h3 className="text-xl md:text-2xl font-medium mb-2 group-hover:text-[#E7B84A] transition-colors leading-tight tracking-tight">{collection.title}</h3>
-                    <p className="text-gray-400 text-xs md:text-sm font-light leading-relaxed line-clamp-2">{collection.shortIntro}</p>
+          {collections.map((collection, idx) => {
+            // 封面图混传兼容
+            const coverSrc = collection.coverImageUrl || collection.coverImage;
+            return (
+              <FadeInSection key={collection._id} delay={idx * 100}>
+                <a href={`#detail-${collection._id}`} className="group cursor-pointer block w-full">
+                  <div className="relative overflow-hidden rounded-sm aspect-[4/5] mb-6 shadow-[0_20px_50px_rgba(0,0,0,0.5)] w-full bg-gray-900">
+                    {coverSrc && (
+                      <ProgressiveImage
+                        src={optimizeImage(coverSrc, 1000)}
+                        lqip={collection.coverImageLqip}
+                        alt={collection.title}
+                        imgClassName="group-hover:scale-105 opacity-90 group-hover:opacity-100"
+                      />
+                    )}
+                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 hidden md:block pointer-events-none"
+                         style={{ background: `linear-gradient(to top, ${collection.dominantColor}aa, transparent)` }} />
                   </div>
-                  <span className="text-gray-500 text-[10px] md:text-xs font-mono mt-1 shrink-0 sm:text-right">{collection.date}</span>
-                </div>
-              </a>
-            </FadeInSection>
-          ))}
+                  <div className="flex flex-col sm:flex-row justify-between items-start gap-2 w-full text-left">
+                    <div className="pr-4 flex-1 text-left">
+                      <h3 className="text-xl md:text-2xl font-medium mb-2 group-hover:text-[#E7B84A] transition-colors leading-tight tracking-tight">{collection.title}</h3>
+                      <p className="text-gray-400 text-xs md:text-sm font-light leading-relaxed line-clamp-2">{collection.shortIntro}</p>
+                    </div>
+                    <span className="text-gray-500 text-[10px] md:text-xs font-mono mt-1 shrink-0 sm:text-right">{collection.date}</span>
+                  </div>
+                </a>
+              </FadeInSection>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -187,7 +193,7 @@ const Home = ({ collections, settings }: { collections: any[], settings: any }) 
 };
 
 // 【详情页】
-const GalleryDetail = ({ collection }: { collection: any }) => {
+const GalleryDetail = ({ collection }) => {
   useEffect(() => { window.scrollTo(0, 0); }, [collection?._id]);
 
   if (!collection) return null;
@@ -219,7 +225,7 @@ const GalleryDetail = ({ collection }: { collection: any }) => {
               <div className="flex justify-center items-center gap-4 text-[10px] md:text-xs font-mono text-gray-500 uppercase tracking-widest">
                 <span>{collection.date}</span>
                 <div className="flex gap-2 flex-wrap justify-center">
-                  {collection.tags?.map((tag: string) => (
+                  {collection.tags?.map((tag) => (
                     <span key={tag} className="px-3 py-1 border border-white/10 bg-white/5 rounded-full text-white/60">{tag}</span>
                   ))}
                 </div>
@@ -229,10 +235,9 @@ const GalleryDetail = ({ collection }: { collection: any }) => {
         </div>
 
         <div className="space-y-6 md:space-y-32 flex flex-col items-center w-full pb-32">
-          {collection.images?.map((imgObj: any, idx: number) => {
-            // 兼容新旧数据结构：如果之前存的是字符串，直接取用；如果是包含了 lqip 的新对象，则解构取出
-            const imgSrc = typeof imgObj === 'string' ? imgObj : imgObj?.url;
-            const imgLqip = typeof imgObj === 'string' ? null : imgObj?.lqip;
+          {collection.images?.map((imgObj, idx) => {
+            const imgSrc = imgObj?.url;
+            const imgLqip = imgObj?.lqip;
 
             return (
               <FadeInSection key={idx} className="w-full max-w-6xl mx-auto px-0 md:px-8">
@@ -254,7 +259,7 @@ const GalleryDetail = ({ collection }: { collection: any }) => {
 };
 
 // 【归档页】
-const Archive = ({ collections }: { collections: any[] }) => {
+const Archive = ({ collections }) => {
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
   return (
@@ -268,39 +273,37 @@ const Archive = ({ collections }: { collections: any[] }) => {
 
       <div className="w-full max-w-7xl mx-auto text-left">
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-6">
-          {collections.map((collection: any) => (
-            <FadeInSection key={collection._id}>
-              <a href={`#detail-${collection._id}`} className="group block text-left">
-                <div className="relative aspect-square overflow-hidden mb-3 bg-gray-900 rounded-sm w-full">
-                  <ProgressiveImage
-                    src={optimizeImage(collection.coverImage, 500)}
-                    lqip={collection.coverImageLqip}
-                    alt={collection.title}
-                    imgClassName="group-hover:scale-110 opacity-80 group-hover:opacity-100"
-                  />
-                </div>
-                <h3 className="text-xs md:text-sm font-medium group-hover:text-[#E7B84A] transition-colors line-clamp-1 tracking-tight text-left">{collection.title}</h3>
-                <span className="text-[9px] text-gray-500 font-mono mt-1 uppercase tracking-tighter text-left block">{collection.date}</span>
-              </a>
-            </FadeInSection>
-          ))}
+          {collections.map((collection) => {
+             const coverSrc = collection.coverImageUrl || collection.coverImage;
+             return (
+              <FadeInSection key={collection._id}>
+                <a href={`#detail-${collection._id}`} className="group block text-left">
+                  <div className="relative aspect-square overflow-hidden mb-3 bg-gray-900 rounded-sm w-full">
+                    <ProgressiveImage
+                      src={optimizeImage(coverSrc, 500)}
+                      lqip={collection.coverImageLqip}
+                      alt={collection.title}
+                      imgClassName="group-hover:scale-110 opacity-80 group-hover:opacity-100"
+                    />
+                  </div>
+                  <h3 className="text-xs md:text-sm font-medium group-hover:text-[#E7B84A] transition-colors line-clamp-1 tracking-tight text-left">{collection.title}</h3>
+                  <span className="text-[9px] text-gray-500 font-mono mt-1 uppercase tracking-tighter text-left block">{collection.date}</span>
+                </a>
+              </FadeInSection>
+            )
+          })}
         </div>
       </div>
     </div>
   );
 };
 
-// --- 4. 核心调度与路由系统 ---
+// --- 5. 核心调度与路由系统 ---
 export default function App() {
   const [currentRoute, setCurrentRoute] = useState('home');
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState(null);
   
-  const [dataState, setDataState] = useState<{
-    collections: any[];
-    settings: any;
-    loading: boolean;
-    error: boolean;
-  }>({
+  const [dataState, setDataState] = useState({
     collections: [],
     settings: null,
     loading: true,
@@ -310,17 +313,22 @@ export default function App() {
   const fetchData = async () => {
     setDataState(prev => ({ ...prev, loading: true, error: false }));
     try {
-      // 深度优化：请求 GROQ 数据时，直接要求 Sanity 把 "lqip"（几十KB的极模糊占位图 base64 字符串）一起打包传过来。
-      const query = `*[_type == "collection" && defined(coverImage)] | order(date desc) {
+      // 深度融合查询：如果填写了外链，就用外链，否则用上传图，同时保留兼容老数据的能力。
+      const query = `*[_type == "collection" && (defined(coverImage) || defined(coverImageUrl))] | order(date desc) {
         _id, title, date, shortIntro, tags,
         "dominantColor": coverImage.asset->metadata.palette.darkMuted.background,
         "coverImage": coverImage.asset->url,
+        "coverImageUrl": coverImageUrl,
         "coverImageLqip": coverImage.asset->metadata.lqip,
-        "images": images[].asset->{ "url": url, "lqip": metadata.lqip }
+        "images": images[] {
+           "url": coalesce(externalUrl, imageAsset.asset->url, asset->url),
+           "lqip": imageAsset.asset->metadata.lqip
+        }
       }`;
       const settingsQuery = `*[_type == "siteSettings"] | order(_updatedAt desc)[0] {
         mainTitle, subtitle, 
         "heroImage": heroImage.asset->url, 
+        "heroImageUrl": heroImageUrl,
         "heroImageLqip": heroImage.asset->metadata.lqip,
         "heroVideo": heroVideo.asset->url
       }`;
@@ -337,32 +345,14 @@ export default function App() {
       
       const { result } = await response.json();
       
-      const formattedData = result.collections.map((item: any) => ({
+      const formattedData = result.collections.map((item) => ({
         ...item, dominantColor: item.dominantColor || '#222222'
       }));
       
       setDataState({ collections: formattedData, settings: result.settings, loading: false, error: false });
     } catch (err) {
-      console.warn("Fetch failed, using fallback mock data for stability.", err);
-      const mockCollections = [
-        {
-          _id: 'mock-1',
-          title: 'Kyoto Autumn',
-          date: '2025.11',
-          shortIntro: 'Wandering through the red maple leaves.',
-          tags: ['Japan', 'Travel'],
-          dominantColor: '#8b3a3a',
-          coverImage: 'https://images.unsplash.com/photo-1493780474015-ba834fd0ce2f?auto=format&fit=crop&w=1200&q=80',
-          coverImageLqip: null,
-          images: [{ url: 'https://images.unsplash.com/photo-1493780474015-ba834fd0ce2f?auto=format&fit=crop&w=2000&q=80', lqip: null }]
-        }
-      ];
-      setDataState({ 
-        collections: mockCollections, 
-        settings: { mainTitle: 'leapday', subtitle: 'PREVIEW MODE' }, 
-        loading: false, 
-        error: false 
-      });
+      console.warn("Fetch failed.", err);
+      setDataState(prev => ({ ...prev, loading: false, error: true }));
     }
   };
 
@@ -399,7 +389,7 @@ export default function App() {
     </div>
   );
 
-  const activeCollection = dataState.collections.find((c: any) => c._id === activeId);
+  const activeCollection = dataState.collections.find((c) => c._id === activeId);
 
   return (
     <div className="antialiased bg-[#0a0a0a] min-h-screen">
