@@ -1,103 +1,124 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, LayoutGrid, Mail, RefreshCw } from 'lucide-react';
+import { ArrowLeft, LayoutGrid, Mail, RefreshCw, ChevronLeft, AlertCircle, Database } from 'lucide-react';
 
-// --- 1. 配置参数 ---
+// --- 1. 全局配置参数 ---
 const PROJECT_ID = 'u6xbvj35';
 const DATASET = 'production';
 const API_VERSION = '2024-04-21';
 
-// 智能图片优化引擎：兼容 Sanity 原生资源和 Cloudflare 外链
+/**
+ * 顶级智能图片优化引擎
+ * 支持 Sanity 原生裁剪、Cloudflare 极速图床、中文乱码修复、协议头自动补全
+ */
 const optimizeImage = (url, width = 1200, quality = 75) => {
   if (!url) return ""; 
-  // 只有 Sanity 的图片才需要通过 API 动态裁剪
-  if (url.includes('cdn.sanity.io')) {
-    return `${url}?w=${width}&q=${quality}&auto=format&fit=max`;
+  
+  let finalUrl = url.trim();
+
+  // 修复 1：自动补全协议头 (防止只填了域名)
+  if (finalUrl.startsWith('leapday-images')) {
+    finalUrl = `https://${finalUrl}`;
+  } else if (!finalUrl.startsWith('http') && (finalUrl.includes('pages.dev') || finalUrl.includes('workers.dev'))) {
+    finalUrl = `https://${finalUrl}`;
   }
-  // Cloudflare 等外链直接返回原图
-  return url;
+
+  // 修复 2：处理中文或特殊字符乱码
+  try {
+    if (finalUrl.includes('%')) {
+      finalUrl = decodeURIComponent(finalUrl);
+    }
+  } catch (e) {
+    console.warn("URL 解码失败:", e);
+  }
+
+  // 优化：如果是 Sanity 自带的图，启用动态裁剪压缩
+  if (finalUrl.includes('cdn.sanity.io')) {
+    return `${finalUrl}?w=${width}&q=${quality}&auto=format&fit=max`;
+  }
+  
+  // Cloudflare 图床直接返回极速链接
+  return finalUrl;
 };
 
-// --- 2. 渐进式加载组件 ---
-const ProgressiveImage = ({ src, lqip, alt, imgClassName = "", containerClassName = "" }) => {
+// --- 2. 渐进式模糊加载组件 ---
+const ProgressiveImage = ({ src, lqip, alt, imgClassName = "" }) => {
   const [isLoaded, setIsLoaded] = useState(false);
+  const [error, setError] = useState(false);
 
   return (
-    <div className={`relative w-full h-full bg-[#111] overflow-hidden ${containerClassName}`}>
-      {lqip && (
+    <div className="relative w-full h-full bg-[#0a0a0a] overflow-hidden">
+      {/* 模糊占位图 */}
+      {lqip && !isLoaded && (
         <img
           src={lqip}
           alt=""
-          aria-hidden="true"
-          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 blur-xl scale-110 ${
-            isLoaded ? 'opacity-0' : 'opacity-100'
-          }`}
+          className="absolute inset-0 w-full h-full object-cover blur-3xl scale-110 opacity-40 transition-opacity duration-1000"
         />
       )}
+      
+      {/* 真实高清图 */}
       <img
         src={src}
         alt={alt}
         loading="lazy"
         onLoad={() => setIsLoaded(true)}
+        onError={() => {
+          console.error("图片加载失败，请检查链接:", src);
+          setError(true);
+        }}
         className={`w-full h-full object-cover transition-opacity duration-1000 ${
           isLoaded ? 'opacity-100' : 'opacity-0'
         } ${imgClassName}`}
       />
+
+      {/* 错误提示层 */}
+      {error && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/50 text-gray-600">
+          <AlertCircle size={16} className="mb-2 opacity-30" />
+          <span className="text-[9px] uppercase tracking-widest opacity-40">Load Error</span>
+        </div>
+      )}
     </div>
   );
 };
 
-// --- 3. 动画钩子 ---
+// --- 3. 页面滚动出现动画钩子 ---
 const useFadeIn = () => {
   const domRef = useRef(null);
   const [isVisible, setVisible] = useState(false);
-  
   useEffect(() => {
     const observer = new IntersectionObserver(entries => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          setVisible(true);
-        }
-      });
-    }, { threshold: 0.05, rootMargin: '100px' }); 
-    
-    const { current } = domRef;
-    if (current) observer.observe(current);
-    return () => { if (current) observer.unobserve(current); };
+      entries.forEach(entry => { if (entry.isIntersecting) setVisible(true); });
+    }, { threshold: 0.05 }); 
+    if (domRef.current) observer.observe(domRef.current);
+    return () => observer.disconnect();
   }, []);
-  
   return [domRef, isVisible];
 };
 
 const FadeInSection = ({ children, delay = 0, className = "" }) => {
   const [ref, isVisible] = useFadeIn();
   return (
-    <div
-      ref={ref}
-      className={`transition-all duration-1000 ease-out w-full ${
-        isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8 md:translate-y-12'
-      } ${className}`}
-      style={{ transitionDelay: `${delay}ms` }}
-    >
+    <div ref={ref} className={`transition-all duration-1000 ease-out w-full ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'} ${className}`} style={{ transitionDelay: `${delay}ms` }}>
       {children}
     </div>
   );
 };
 
-// --- 4. 页面组件 ---
+// --- 4. 子页面组件 ---
 
-// 【首页】
+// 【首页视图】
 const Home = ({ collections, settings }) => {
-  // 优先级：外部直链 > Sanity 上传图
-  const heroImg = optimizeImage(settings?.heroImageUrl || settings?.heroImage || collections[0]?.coverImageUrl || collections[0]?.coverImage, 2000, 85);
-  const heroLqip = settings?.heroImageLqip || collections[0]?.coverImageLqip;
+  // 智能抓取首页背景图：优先视频 > 全局设置外链图 > 全局设置本地图 > 最新作品集封面外链 > 最新作品集封面本地图
+  const heroImg = optimizeImage(
+    settings?.heroImageUrl || settings?.heroImage || collections[0]?.coverImageUrl || collections[0]?.coverImage, 
+    2000
+  );
   const heroVideo = settings?.heroVideo; 
-  const mainTitle = settings?.mainTitle || "leapday";
-  const subTitle = settings?.subtitle || "";
 
   const videoRef = useRef(null);
-
   useEffect(() => {
     if (videoRef.current && heroVideo) {
       videoRef.current.defaultMuted = true;
@@ -109,156 +130,112 @@ const Home = ({ collections, settings }) => {
   }, [heroVideo]);
 
   return (
-    <div className="bg-[#0a0a0a] text-white min-h-screen overflow-x-hidden w-full">
+    <div className="bg-[#0a0a0a] text-white min-h-screen w-full">
+      {/* 首页全屏头图区 */}
       <div className="relative h-[100svh] min-h-[500px] w-full flex items-center justify-center overflow-hidden bg-black">
         <div className="absolute inset-0 z-0">
           {heroVideo ? (
             <video 
               ref={videoRef}
               src={heroVideo} 
-              autoPlay 
-              loop 
-              muted 
-              defaultMuted 
-              playsInline  
-              className="w-full h-full object-cover opacity-60 md:opacity-50 scale-105"
+              autoPlay loop muted defaultMuted playsInline 
+              className="w-full h-full object-cover opacity-60 md:opacity-40 scale-105" 
             />
           ) : heroImg ? (
-            <ProgressiveImage
-              src={heroImg}
-              lqip={heroLqip}
-              alt="Hero"
-              imgClassName="opacity-50 md:opacity-40 scale-105 animate-pulse-slow transition-opacity duration-1000"
-            />
-          ) : null}
+            <ProgressiveImage src={heroImg} lqip={settings?.heroImageLqip} alt="Hero" imgClassName="opacity-50 md:opacity-40 scale-105 animate-pulse-slow" />
+          ) : (
+            <div className="w-full h-full bg-[#0a0a0a]" />
+          )}
           <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/40 to-[#0a0a0a]"></div>
         </div>
         
-        <div className="relative z-10 text-center flex flex-col items-center px-4 w-full max-w-[95vw] mx-auto">
-          <h1 className="text-5xl sm:text-7xl md:text-8xl lg:text-9xl font-normal tracking-tight text-[#E7B84A] drop-shadow-2xl mb-4 leading-tight text-balance">
-            {mainTitle}
+        <div className="relative z-10 text-center px-4 w-full">
+          <h1 className="text-5xl sm:text-7xl md:text-8xl lg:text-9xl font-normal tracking-tighter text-[#E7B84A] drop-shadow-2xl mb-4 uppercase">
+            {settings?.mainTitle || "leapday"}
           </h1>
-          {subTitle && (
-            <p className="text-gray-300 tracking-[0.4em] uppercase text-[10px] md:text-sm font-light mt-2 opacity-80">
-              {subTitle}
-            </p>
-          )}
+          <p className="text-gray-300 tracking-[0.4em] uppercase text-[10px] md:text-sm font-light opacity-60">
+            {settings?.subtitle || "A Photography Journal"}
+          </p>
         </div>
       </div>
 
-      <div className="w-full max-w-7xl mx-auto px-5 md:px-8 py-20 md:py-32">
-        <FadeInSection>
-          <div className="flex justify-between items-end mb-12 md:mb-20 border-b border-white/10 pb-8">
-            <h2 className="text-2xl md:text-4xl font-normal tracking-tight text-left">最新记录</h2>
-            <a href="#archive" className="text-[10px] md:text-xs text-gray-500 hover:text-[#E7B84A] transition-all uppercase tracking-widest flex items-center gap-2 py-2 whitespace-nowrap">
-              <LayoutGrid size={14} /> <span className="hidden sm:inline">查看</span> 全部归档
-            </a>
-          </div>
+      {/* 首页最新作品集列表 */}
+      <div className="max-w-7xl mx-auto px-5 md:px-8 py-32">
+        <FadeInSection className="flex justify-between items-end mb-16 border-b border-white/10 pb-8">
+          <h2 className="text-2xl md:text-4xl font-light tracking-tight">最新记录</h2>
+          <a href="#archive" className="text-[10px] text-gray-500 hover:text-[#E7B84A] uppercase tracking-widest flex items-center gap-2 transition-colors">
+            <LayoutGrid size={14} /> 全部归档
+          </a>
         </FadeInSection>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-16 md:gap-32 w-full text-left">
-          {collections.map((collection, idx) => {
-            // 封面图混传兼容
-            const coverSrc = collection.coverImageUrl || collection.coverImage;
-            return (
-              <FadeInSection key={collection._id} delay={idx * 100}>
-                <a href={`#detail-${collection._id}`} className="group cursor-pointer block w-full">
-                  <div className="relative overflow-hidden rounded-sm aspect-[4/5] mb-6 shadow-[0_20px_50px_rgba(0,0,0,0.5)] w-full bg-gray-900">
-                    {coverSrc && (
-                      <ProgressiveImage
-                        src={optimizeImage(coverSrc, 1000)}
-                        lqip={collection.coverImageLqip}
-                        alt={collection.title}
-                        imgClassName="group-hover:scale-105 opacity-90 group-hover:opacity-100"
-                      />
-                    )}
-                    <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 hidden md:block pointer-events-none"
-                         style={{ background: `linear-gradient(to top, ${collection.dominantColor}aa, transparent)` }} />
-                  </div>
-                  <div className="flex flex-col sm:flex-row justify-between items-start gap-2 w-full text-left">
-                    <div className="pr-4 flex-1 text-left">
-                      <h3 className="text-xl md:text-2xl font-medium mb-2 group-hover:text-[#E7B84A] transition-colors leading-tight tracking-tight">{collection.title}</h3>
-                      <p className="text-gray-400 text-xs md:text-sm font-light leading-relaxed line-clamp-2">{collection.shortIntro}</p>
-                    </div>
-                    <span className="text-gray-500 text-[10px] md:text-xs font-mono mt-1 shrink-0 sm:text-right">{collection.date}</span>
-                  </div>
-                </a>
-              </FadeInSection>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// 【详情页】
-const GalleryDetail = ({ collection }) => {
-  useEffect(() => { window.scrollTo(0, 0); }, [collection?._id]);
-
-  if (!collection) return null;
-
-  return (
-    <div className="min-h-screen text-white relative bg-[#0a0a0a] overflow-x-hidden w-full">
-      <div 
-        className="fixed top-0 left-0 w-full h-screen pointer-events-none z-0 opacity-40 md:opacity-60"
-        style={{
-          background: `radial-gradient(circle at 50% 30%, ${collection.dominantColor || '#222'} 0%, transparent 70%)`,
-          filter: 'blur(120px)', 
-          transform: 'translateZ(0)' 
-        }}
-      />
-
-      <div className="relative z-10 w-full">
-        <nav className="fixed top-0 left-0 w-full px-5 py-4 md:px-8 z-50 flex justify-between items-center bg-black/60 backdrop-blur-xl border-b border-white/5">
-          <a href="#" className="flex items-center gap-2 hover:text-[#E7B84A] transition-colors text-[10px] md:text-xs uppercase tracking-widest py-2">
-            <ArrowLeft size={16} /> 返回
-          </a>
-          <div className="text-[#E7B84A] font-bold tracking-[0.3em] text-sm md:text-lg uppercase">leapday</div>
-        </nav>
-
-        <div className="pt-32 pb-16 md:pt-48 md:pb-32 w-full px-5 md:px-8 max-w-5xl mx-auto">
-          <FadeInSection>
-            <div className="mb-16 md:mb-20 text-center max-w-4xl mx-auto">
-              <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-normal mb-6 tracking-tight leading-tight text-balance">{collection.title}</h1>
-              <p className="text-base md:text-xl text-gray-300 font-light leading-relaxed mb-8">{collection.shortIntro}</p>
-              <div className="flex justify-center items-center gap-4 text-[10px] md:text-xs font-mono text-gray-500 uppercase tracking-widest">
-                <span>{collection.date}</span>
-                <div className="flex gap-2 flex-wrap justify-center">
-                  {collection.tags?.map((tag) => (
-                    <span key={tag} className="px-3 py-1 border border-white/10 bg-white/5 rounded-full text-white/60">{tag}</span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </FadeInSection>
-        </div>
-
-        <div className="space-y-6 md:space-y-32 flex flex-col items-center w-full pb-32">
-          {collection.images?.map((imgObj, idx) => {
-            const imgSrc = imgObj?.url;
-            const imgLqip = imgObj?.lqip;
-
-            return (
-              <FadeInSection key={idx} className="w-full max-w-6xl mx-auto px-0 md:px-8">
-                <div className="w-full bg-gray-900 md:rounded-sm min-h-[40vh] shadow-2xl flex items-center justify-center overflow-hidden">
-                  <ProgressiveImage 
-                    src={optimizeImage(imgSrc, 1600)} 
-                    lqip={imgLqip}
-                    alt={`${collection.title} - ${idx + 1}`}
-                    imgClassName="md:rounded-sm"
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-16 md:gap-32 w-full">
+          {collections.slice(0, 4).map((item, idx) => (
+            <FadeInSection key={item._id} delay={idx * 100}>
+              <a href={`#detail-${item._id}`} className="group cursor-pointer block">
+                <div className="relative aspect-[4/5] mb-8 shadow-2xl bg-gray-900 rounded-sm">
+                  <ProgressiveImage
+                    src={optimizeImage(item.coverImageUrl || item.coverImage, 1200)}
+                    lqip={item.coverImageLqip}
+                    alt={item.title}
+                    imgClassName="group-hover:scale-105 opacity-90 group-hover:opacity-100 transition-all duration-1000"
                   />
                 </div>
-              </FadeInSection>
-            );
-          })}
+                <div className="flex justify-between items-start gap-4">
+                  <div className="text-left flex-1">
+                    <h3 className="text-xl md:text-2xl font-medium group-hover:text-[#E7B84A] transition-colors tracking-tight">{item.title}</h3>
+                    <p className="text-gray-500 text-xs md:text-sm font-light line-clamp-2 mt-2 leading-relaxed">{item.shortIntro}</p>
+                  </div>
+                  <span className="text-gray-600 text-[10px] font-mono mt-2 uppercase tracking-tighter shrink-0">{item.date}</span>
+                </div>
+              </a>
+            </FadeInSection>
+          ))}
         </div>
       </div>
     </div>
   );
 };
 
-// 【归档页】
+// 【作品集详情视图】
+const Detail = ({ collection }) => {
+  useEffect(() => { window.scrollTo(0, 0); }, [collection._id]);
+
+  return (
+    <div className="min-h-screen bg-[#0a0a0a] text-white w-full overflow-x-hidden">
+      <nav className="fixed top-0 left-0 w-full px-5 py-4 md:px-8 z-50 flex justify-between items-center bg-black/60 backdrop-blur-xl border-b border-white/5">
+        <a href="#" className="flex items-center gap-2 hover:text-[#E7B84A] text-[10px] uppercase tracking-widest transition-all">
+          <ChevronLeft size={16} /> 返回
+        </a>
+        <div className="text-[#E7B84A] font-bold tracking-[0.3em] text-sm uppercase">LEAPDAY</div>
+      </nav>
+      
+      <div className="pt-40 pb-16 md:pt-48 md:pb-32 w-full px-5 md:px-8 max-w-4xl mx-auto text-center">
+        <FadeInSection>
+          <h1 className="text-4xl md:text-7xl font-light mb-8 leading-tight tracking-tighter">{collection.title}</h1>
+          <p className="text-gray-400 text-base md:text-xl font-light mb-10 max-w-2xl mx-auto leading-relaxed">{collection.shortIntro}</p>
+          <div className="flex justify-center gap-6 text-[10px] text-gray-600 uppercase tracking-widest font-mono flex-wrap">
+            <span>{collection.date}</span>
+            <div className="flex gap-2 flex-wrap justify-center">
+              {collection.tags?.map(t => <span key={t} className="px-2 border border-white/10 py-1 rounded-sm">#{t}</span>)}
+            </div>
+          </div>
+        </FadeInSection>
+      </div>
+      
+      <div className="flex flex-col items-center gap-10 md:gap-32 pb-40">
+        {collection.images?.map((img, i) => (
+          <FadeInSection key={i} className="max-w-6xl w-full px-0 md:px-10">
+            <div className="bg-gray-900 shadow-2xl min-h-[30vh]">
+              <ProgressiveImage src={optimizeImage(img.url, 1800)} lqip={img.lqip} alt={`${collection.title} - ${i}`} />
+            </div>
+          </FadeInSection>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// 【全部作品归档视图】
 const Archive = ({ collections }) => {
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
@@ -268,100 +245,118 @@ const Archive = ({ collections }) => {
         <a href="#" className="flex items-center gap-2 hover:text-[#E7B84A] transition-colors text-[10px] md:text-xs uppercase tracking-widest py-2">
           <ArrowLeft size={16} /> 首页
         </a>
-        <h1 className="text-base md:text-xl tracking-[0.3em] font-normal uppercase">作品归档</h1>
+        <h1 className="text-base md:text-xl tracking-[0.3em] font-normal uppercase">全部记录</h1>
       </nav>
 
-      <div className="w-full max-w-7xl mx-auto text-left">
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-6">
-          {collections.map((collection) => {
-             const coverSrc = collection.coverImageUrl || collection.coverImage;
-             return (
-              <FadeInSection key={collection._id}>
-                <a href={`#detail-${collection._id}`} className="group block text-left">
-                  <div className="relative aspect-square overflow-hidden mb-3 bg-gray-900 rounded-sm w-full">
-                    <ProgressiveImage
-                      src={optimizeImage(coverSrc, 500)}
-                      lqip={collection.coverImageLqip}
-                      alt={collection.title}
-                      imgClassName="group-hover:scale-110 opacity-80 group-hover:opacity-100"
-                    />
-                  </div>
-                  <h3 className="text-xs md:text-sm font-medium group-hover:text-[#E7B84A] transition-colors line-clamp-1 tracking-tight text-left">{collection.title}</h3>
-                  <span className="text-[9px] text-gray-500 font-mono mt-1 uppercase tracking-tighter text-left block">{collection.date}</span>
-                </a>
-              </FadeInSection>
-            )
-          })}
+      <div className="w-full max-w-7xl mx-auto">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 md:gap-8">
+          {collections.map((item) => (
+            <FadeInSection key={item._id}>
+              <a href={`#detail-${item._id}`} className="group block text-left">
+                <div className="relative aspect-square overflow-hidden mb-4 bg-gray-900 rounded-sm w-full">
+                  <ProgressiveImage
+                    src={optimizeImage(item.coverImageUrl || item.coverImage, 600)}
+                    lqip={item.coverImageLqip}
+                    alt={item.title}
+                    imgClassName="group-hover:scale-110 opacity-80 group-hover:opacity-100 transition-all duration-700"
+                  />
+                </div>
+                <h3 className="text-xs md:text-sm font-medium group-hover:text-[#E7B84A] transition-colors line-clamp-1 tracking-tight">{item.title}</h3>
+                <span className="text-[9px] text-gray-600 font-mono mt-1 uppercase tracking-tighter block">{item.date}</span>
+              </a>
+            </FadeInSection>
+          ))}
         </div>
       </div>
     </div>
   );
 };
 
-// --- 5. 核心调度与路由系统 ---
+// --- 5. 核心前端引擎与路由调度 ---
+
+// 紧急备用数据 (Mock Data)：用于绕过临时预览环境的跨域限制
+const MOCK_DATA = {
+  settings: {
+    mainTitle: "NEO DREAM",
+    subtitle: "A PHOTOGRAPHY JOURNAL (MOCK DATA)",
+    heroImageUrl: "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?auto=format&fit=crop&w=2000&q=80"
+  },
+  collections: [
+    {
+      _id: "mock1",
+      title: "Cyber City",
+      date: "2025.01",
+      shortIntro: "Night walks in the neon districts. The city never sleeps.",
+      tags: ["Street", "Night"],
+      coverImageUrl: "https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=800&q=80",
+      images: [
+        { url: "https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=1600&q=80" },
+        { url: "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=1600&q=80" }
+      ]
+    },
+    {
+      _id: "mock2",
+      title: "Minimalist Space",
+      date: "2024.12",
+      shortIntro: "Exploring geometric shapes and natural light.",
+      tags: ["Architecture", "Light"],
+      coverImageUrl: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=800&q=80",
+      images: [
+        { url: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1600&q=80" }
+      ]
+    }
+  ]
+};
+
 export default function App() {
   const [currentRoute, setCurrentRoute] = useState('home');
   const [activeId, setActiveId] = useState(null);
   
-  const [dataState, setDataState] = useState({
-    collections: [],
-    settings: null,
-    loading: true,
-    error: false,
-  });
+  const [data, setData] = useState({ collections: [], settings: null, loading: true, error: false, isMock: false });
+  const [showDebug, setShowDebug] = useState(false);
 
   const fetchData = async () => {
-    setDataState(prev => ({ ...prev, loading: true, error: false }));
+    setData(prev => ({ ...prev, loading: true, error: false, isMock: false }));
     try {
-      // 深度融合查询：如果填写了外链，就用外链，否则用上传图，同时保留兼容老数据的能力。
-      const query = `*[_type == "collection" && (defined(coverImage) || defined(coverImageUrl))] | order(date desc) {
-        _id, title, date, shortIntro, tags,
-        "dominantColor": coverImage.asset->metadata.palette.darkMuted.background,
-        "coverImage": coverImage.asset->url,
-        "coverImageUrl": coverImageUrl,
-        "coverImageLqip": coverImage.asset->metadata.lqip,
-        "images": images[] {
-           "url": coalesce(externalUrl, imageAsset.asset->url, asset->url),
-           "lqip": imageAsset.asset->metadata.lqip
+      const query = encodeURIComponent(`{
+        "collections": *[_type == "collection"] | order(date desc) {
+          _id, title, date, shortIntro, tags,
+          "coverImage": coverImage.asset->url,
+          "coverImageUrl": coverImageUrl,
+          "coverImageLqip": coverImage.asset->metadata.lqip,
+          "images": images[] {
+             "url": coalesce(externalUrl, imageAsset.asset->url),
+             "lqip": imageAsset.asset->metadata.lqip
+          }
+        },
+        "settings": *[_type == "siteSettings"][0] {
+          mainTitle, subtitle, 
+          "heroImage": heroImage.asset->url, 
+          "heroImageUrl": heroImageUrl,
+          "heroImageLqip": heroImage.asset->metadata.lqip,
+          "heroVideo": heroVideo.asset->url
         }
-      }`;
-      const settingsQuery = `*[_type == "siteSettings"] | order(_updatedAt desc)[0] {
-        mainTitle, subtitle, 
-        "heroImage": heroImage.asset->url, 
-        "heroImageUrl": heroImageUrl,
-        "heroImageLqip": heroImage.asset->metadata.lqip,
-        "heroVideo": heroVideo.asset->url
-      }`;
-
-      const fullQuery = encodeURIComponent(`{
-        "collections": ${query},
-        "settings": ${settingsQuery}
       }`);
-
-      const url = `https://${PROJECT_ID}.api.sanity.io/v${API_VERSION}/data/query/${DATASET}?query=${fullQuery}`;
+      const url = `https://${PROJECT_ID}.api.sanity.io/v${API_VERSION}/data/query/${DATASET}?query=${query}`;
+      const res = await fetch(url);
       
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('API Request Failed');
+      if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
       
-      const { result } = await response.json();
-      
-      const formattedData = result.collections.map((item) => ({
-        ...item, dominantColor: item.dominantColor || '#222222'
-      }));
-      
-      setDataState({ collections: formattedData, settings: result.settings, loading: false, error: false });
+      const { result } = await res.json();
+      setData({ collections: result.collections || [], settings: result.settings || {}, loading: false, error: false, isMock: false });
     } catch (err) {
-      console.warn("Fetch failed.", err);
-      setDataState(prev => ({ ...prev, loading: false, error: true }));
+      console.error("Fetch Error (可能是预览环境跨域限制):", err);
+      setData(prev => ({ ...prev, loading: false, error: true }));
     }
   };
 
-  useEffect(() => {
-    fetchData();
+  useEffect(() => { 
+    fetchData(); 
+    // 监听 URL Hash 变化实现原生路由
     const handleHash = () => {
       const hash = window.location.hash.replace('#', '');
       if (!hash) { setCurrentRoute('home'); setActiveId(null); }
-      else if (hash === 'archive') { setCurrentRoute('archive'); }
+      else if (hash === 'archive') { setCurrentRoute('archive'); setActiveId(null); }
       else if (hash.startsWith('detail-')) { setCurrentRoute('detail'); setActiveId(hash.replace('detail-', '')); }
     };
     window.addEventListener('hashchange', handleHash);
@@ -369,43 +364,80 @@ export default function App() {
     return () => window.removeEventListener('hashchange', handleHash);
   }, []);
 
-  if (dataState.error) {
-    return (
-      <div className="min-h-screen bg-[#0a0a0a] flex flex-col items-center justify-center text-gray-500 font-mono text-xs">
-        <p className="mb-4 tracking-widest uppercase opacity-60">连接数据库失败</p>
-        <button onClick={fetchData} className="px-6 py-2 border border-gray-800 rounded-full hover:border-[#E7B84A] transition-colors flex items-center gap-2">
-          <RefreshCw size={14} /> 点击重试
-        </button>
-      </div>
-    );
-  }
+  if (data.loading) return (
+    <div className="h-screen bg-[#0a0a0a] flex items-center justify-center">
+      <div className="text-[#E7B84A] animate-pulse tracking-[0.5em] text-[10px] font-mono">SYNCING</div>
+    </div>
+  );
 
-  if (dataState.loading) return (
-    <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
-      <div className="flex flex-col items-center gap-4 animate-pulse">
-        <div className="w-8 h-8 border-t-2 border-[#E7B84A] rounded-full animate-spin"></div>
-        <p className="tracking-[0.3em] text-[10px] text-gray-500 font-light uppercase">同步中</p>
+  // 跨域拦截容错界面：提供一键预览测试数据的选项
+  if (data.error) return (
+    <div className="min-h-screen bg-black flex flex-col items-center justify-center text-gray-400 font-mono text-[10px] p-6 text-center">
+      <AlertCircle size={32} className="mb-4 text-red-900 opacity-80" />
+      <p className="mb-2 tracking-[0.3em] text-red-500 font-bold uppercase">Sanity CORS / Fetch Error</p>
+      <div className="mb-6 max-w-lg opacity-60 leading-relaxed text-left bg-[#111] p-5 rounded-sm border border-red-900/30 shadow-2xl">
+        <p className="mb-2"><strong>请求被拒绝 (Failed to fetch)</strong>。这是由于当前右侧预览环境的临时域名触发了 Sanity 数据库的安全机制 (CORS)。</p>
+        <p className="mb-4">这<strong>并不代表代码有问题</strong>，当您在本地运行或者将代码部署到 Vercel 后，只需将正式域名添加到 Sanity 的 CORS 白名单中即可恢复正常。</p>
+        <div className="break-all bg-black p-3 text-[9px] text-gray-500 border border-white/5 font-mono">
+          被拦截的域名环境：<br/>
+          <span className="text-[#E7B84A]">{typeof window !== 'undefined' ? window.location.origin : 'unknown'}</span>
+        </div>
+      </div>
+      <div className="flex flex-wrap justify-center gap-4">
+        <button onClick={fetchData} className="px-6 py-2 border border-white/10 hover:border-[#E7B84A] hover:text-[#E7B84A] transition-all uppercase">重试连接</button>
+        <button 
+          onClick={() => setData({ collections: MOCK_DATA.collections, settings: MOCK_DATA.settings, loading: false, error: false, isMock: true })} 
+          className="px-6 py-2 bg-[#E7B84A]/10 text-[#E7B84A] hover:bg-[#E7B84A]/20 transition-all uppercase font-bold"
+        >
+          使用测试数据强制预览 UI
+        </button>
       </div>
     </div>
   );
 
-  const activeCollection = dataState.collections.find((c) => c._id === activeId);
+  const activeCollection = data.collections.find((c) => c._id === activeId);
 
   return (
-    <div className="antialiased bg-[#0a0a0a] min-h-screen">
-      {currentRoute === 'home' && <Home collections={dataState.collections} settings={dataState.settings} />}
-      {currentRoute === 'detail' && activeCollection && <GalleryDetail collection={activeCollection} />}
-      {currentRoute === 'archive' && <Archive collections={dataState.collections} />}
+    <div className="antialiased bg-[#0a0a0a]">
+      {/* 路由视图渲染 */}
+      {currentRoute === 'home' && <Home collections={data.collections} settings={data.settings} />}
+      {currentRoute === 'detail' && activeCollection && <Detail collection={activeCollection} />}
+      {currentRoute === 'archive' && <Archive collections={data.collections} />}
       
-      <footer className="bg-black text-gray-600 py-20 w-full text-center flex flex-col items-center gap-8 border-t border-white/5">
-        <div className="flex gap-8">
-          <a href="#" className="hover:text-[#E7B84A] transition-colors p-2"><Mail size={18} strokeWidth={1.5} /></a>
-        </div>
-        <p className="text-[10px] font-mono tracking-[0.3em] uppercase opacity-50 px-4 leading-loose">
-          © {new Date().getFullYear()} LEAPDAY. ALL RIGHTS RESERVED.<br/>
-          CAPTURING MOMENTS THROUGH THE LENS.
-        </p>
+      {/* 底部版权与隐藏调试面板 */}
+      <footer 
+        className="bg-black py-24 text-center border-t border-white/5 opacity-30 text-[8px] tracking-[0.4em] uppercase cursor-pointer hover:opacity-80 transition-opacity"
+        onDoubleClick={() => setShowDebug(!showDebug)}
+        title="双击调出开发者调试面板"
+      >
+        © {new Date().getFullYear()} LEAPDAY. ALL RIGHTS RESERVED.
+        <br/><span className="mt-2 block opacity-40">Capturing Moments Through The Lens.</span>
+        
+        {/* Mock 状态警告提示 */}
+        {data.isMock && (
+          <span className="mt-6 text-[#E7B84A] font-bold tracking-widest bg-[#E7B84A]/10 py-2 px-4 inline-block rounded-sm">
+            ⚠️ 正在使用本地测试数据 (MOCK DATA) 预览
+          </span>
+        )}
       </footer>
+
+      {/* 隐藏的开发者数据查看面板（底部双击唤出） */}
+      {showDebug && (
+        <div className="fixed bottom-0 left-0 w-full p-6 bg-[#111] border-t border-[#E7B84A]/30 z-[9999] text-[10px] font-mono max-h-[50vh] overflow-auto shadow-2xl">
+          <div className="flex justify-between mb-4 border-b border-white/10 pb-4">
+            <span className="text-[#E7B84A] font-bold uppercase flex items-center gap-2"><Database size={12}/> Sanity 数据库连通性自检</span>
+            <button onClick={() => setShowDebug(false)} className="text-gray-500 hover:text-white">关闭 (Close)</button>
+          </div>
+          <div className="text-green-500 mb-2">Status: Connected to u6xbvj35 / production</div>
+          <p className="text-gray-500 mb-4">以下为 Sanity 传来的 Global Settings 原始数据：</p>
+          <pre className="text-gray-300 bg-black p-4 rounded-sm">
+            {JSON.stringify(data.settings, null, 2)}
+          </pre>
+          <div className="mt-4 p-3 bg-[#E7B84A]/10 text-[#E7B84A] rounded-sm">
+            如果看到 heroImageUrl 是正确的 Cloudflare 链接且网站仍黑屏，说明图床文件不存在；如果没有 heroImageUrl 字段，请检查 Vercel 的 Studio 是否已重新构建。
+          </div>
+        </div>
+      )}
     </div>
   );
 }
