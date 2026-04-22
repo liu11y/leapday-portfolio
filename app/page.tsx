@@ -14,15 +14,21 @@ const optimizeImage = (url: string, width = 1200, quality = 80) => {
   return `${url}?w=${width}&q=${quality}&auto=format&fit=max`;
 };
 
-// --- 2. 动画钩子 ---
+// --- 2. 动画钩子 (修复缩放导致的隐藏 Bug) ---
 const useFadeIn = () => {
   const domRef = useRef<HTMLDivElement>(null);
   const [isVisible, setVisible] = useState(false);
   
   useEffect(() => {
     const observer = new IntersectionObserver(entries => {
-      entries.forEach(entry => setVisible(entry.isIntersecting));
-    }, { threshold: 0.1 }); 
+      entries.forEach(entry => {
+        // 关键修复：一旦出现在视口中，就永久设为 true，防止浏览器缩放导致元素闪烁消失
+        if (entry.isIntersecting) {
+          setVisible(true);
+        }
+      });
+    }, { threshold: 0.05, rootMargin: '100px' }); // 增加安全边距，适应各种疯狂的缩放比例
+    
     const { current } = domRef;
     if (current) observer.observe(current);
     return () => { if (current) observer.unobserve(current); };
@@ -56,7 +62,7 @@ const Home = ({ collections, settings }: { collections: any[], settings: any }) 
 
   return (
     <div className="bg-[#0a0a0a] text-white min-h-screen overflow-x-hidden w-full">
-      <div className="relative h-[100svh] w-full flex items-center justify-center overflow-hidden bg-black">
+      <div className="relative h-[100svh] min-h-[500px] w-full flex items-center justify-center overflow-hidden bg-black">
         <div className="absolute inset-0 z-0">
           {heroImg && (
             <img 
@@ -69,8 +75,9 @@ const Home = ({ collections, settings }: { collections: any[], settings: any }) 
           <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/40 to-[#0a0a0a]"></div>
         </div>
         
-        <div className="relative z-10 text-center flex flex-col items-center px-6 w-full">
-          <h1 className="text-6xl sm:text-7xl md:text-9xl font-normal tracking-tight text-[#E7B84A] drop-shadow-2xl mb-4 w-full break-words">
+        <div className="relative z-10 text-center flex flex-col items-center px-4 w-full max-w-[95vw] mx-auto">
+          {/* 关键修复：加入 text-balance 防呆折行，移除容易导致错乱的 w-full break-words */}
+          <h1 className="text-5xl sm:text-7xl md:text-8xl lg:text-9xl font-normal tracking-tight text-[#E7B84A] drop-shadow-2xl mb-4 leading-tight text-balance">
             {mainTitle}
           </h1>
           {subTitle && (
@@ -84,18 +91,18 @@ const Home = ({ collections, settings }: { collections: any[], settings: any }) 
       <div className="w-full max-w-7xl mx-auto px-5 md:px-8 py-20 md:py-32">
         <FadeInSection>
           <div className="flex justify-between items-end mb-12 md:mb-20 border-b border-white/10 pb-8">
-            <h2 className="text-2xl md:text-4xl font-normal tracking-tight">最新记录</h2>
-            <a href="#archive" className="text-[10px] md:text-xs text-gray-500 hover:text-[#E7B84A] transition-all uppercase tracking-widest flex items-center gap-2 py-2">
+            <h2 className="text-2xl md:text-4xl font-normal tracking-tight text-left">最新记录</h2>
+            <a href="#archive" className="text-[10px] md:text-xs text-gray-500 hover:text-[#E7B84A] transition-all uppercase tracking-widest flex items-center gap-2 py-2 whitespace-nowrap">
               <LayoutGrid size={14} /> <span className="hidden sm:inline">查看</span> 全部归档
             </a>
           </div>
         </FadeInSection>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-16 md:gap-32">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-16 md:gap-32 w-full text-left">
           {collections.map((collection: any, idx: number) => (
             <FadeInSection key={collection._id} delay={idx * 100}>
-              <a href={`#detail-${collection._id}`} className="group cursor-pointer block">
-                <div className="relative overflow-hidden rounded-sm aspect-[4/5] mb-6 bg-gray-900 shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+              <a href={`#detail-${collection._id}`} className="group cursor-pointer block w-full">
+                <div className="relative overflow-hidden rounded-sm aspect-[4/5] mb-6 bg-gray-900 shadow-[0_20px_50px_rgba(0,0,0,0.5)] w-full">
                   {collection.coverImage && (
                     <img 
                       src={optimizeImage(collection.coverImage, 1000)} 
@@ -107,12 +114,13 @@ const Home = ({ collections, settings }: { collections: any[], settings: any }) 
                   <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 hidden md:block"
                        style={{ background: `linear-gradient(to top, ${collection.dominantColor}aa, transparent)` }} />
                 </div>
-                <div className="flex justify-between items-start">
-                  <div className="pr-4">
+                {/* 关键修复：严格控制文本左对齐，不受全局影响 */}
+                <div className="flex flex-col sm:flex-row justify-between items-start gap-2 w-full text-left">
+                  <div className="pr-4 flex-1 text-left">
                     <h3 className="text-xl md:text-2xl font-medium mb-2 group-hover:text-[#E7B84A] transition-colors leading-tight tracking-tight">{collection.title}</h3>
                     <p className="text-gray-400 text-xs md:text-sm font-light leading-relaxed line-clamp-2">{collection.shortIntro}</p>
                   </div>
-                  <span className="text-gray-500 text-[10px] md:text-xs font-mono mt-1 shrink-0">{collection.date}</span>
+                  <span className="text-gray-500 text-[10px] md:text-xs font-mono mt-1 shrink-0 sm:text-right">{collection.date}</span>
                 </div>
               </a>
             </FadeInSection>
@@ -150,12 +158,13 @@ const GalleryDetail = ({ collection }: { collection: any }) => {
 
         <div className="pt-32 pb-16 md:pt-48 md:pb-32 w-full px-5 md:px-8 max-w-5xl mx-auto">
           <FadeInSection>
-            <div className="mb-20 text-center max-w-3xl mx-auto">
-              <h1 className="text-4xl sm:text-6xl md:text-7xl font-normal mb-6 tracking-tight leading-tight">{collection.title}</h1>
-              <p className="text-sm md:text-xl text-gray-300 font-light leading-relaxed mb-8 px-2">{collection.shortIntro}</p>
-              <div className="flex justify-center items-center gap-4 text-[10px] md:text-xs font-mono text-gray-500 uppercase tracking-widest">
+            {/* 关键修复：文章信息改为严格的左对齐，去除 text-center，回归最舒适的阅读体验 */}
+            <div className="mb-16 md:mb-20 text-left max-w-4xl">
+              <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-normal mb-6 tracking-tight leading-tight text-balance">{collection.title}</h1>
+              <p className="text-base md:text-xl text-gray-300 font-light leading-relaxed mb-8">{collection.shortIntro}</p>
+              <div className="flex justify-start items-center gap-4 text-[10px] md:text-xs font-mono text-gray-500 uppercase tracking-widest">
                 <span>{collection.date}</span>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   {collection.tags?.map((tag: string) => (
                     <span key={tag} className="px-3 py-1 border border-white/10 bg-white/5 rounded-full text-white/60">{tag}</span>
                   ))}
@@ -197,16 +206,16 @@ const Archive = ({ collections }: { collections: any[] }) => {
         <h1 className="text-base md:text-xl tracking-[0.3em] font-normal uppercase">作品归档</h1>
       </nav>
 
-      <div className="w-full max-w-7xl mx-auto">
+      <div className="w-full max-w-7xl mx-auto text-left">
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-6">
           {collections.map((collection: any) => (
             <FadeInSection key={collection._id}>
-              <a href={`#detail-${collection._id}`} className="group block">
-                <div className="relative aspect-square overflow-hidden mb-3 bg-gray-900 rounded-sm">
+              <a href={`#detail-${collection._id}`} className="group block text-left">
+                <div className="relative aspect-square overflow-hidden mb-3 bg-gray-900 rounded-sm w-full">
                   <img src={optimizeImage(collection.coverImage, 500)} className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110 opacity-80 group-hover:opacity-100" />
                 </div>
-                <h3 className="text-xs md:text-sm font-medium group-hover:text-[#E7B84A] transition-colors line-clamp-1 tracking-tight">{collection.title}</h3>
-                <span className="text-[9px] text-gray-500 font-mono mt-1 uppercase tracking-tighter">{collection.date}</span>
+                <h3 className="text-xs md:text-sm font-medium group-hover:text-[#E7B84A] transition-colors line-clamp-1 tracking-tight text-left">{collection.title}</h3>
+                <span className="text-[9px] text-gray-500 font-mono mt-1 uppercase tracking-tighter text-left block">{collection.date}</span>
               </a>
             </FadeInSection>
           ))}
@@ -221,7 +230,6 @@ export default function App() {
   const [currentRoute, setCurrentRoute] = useState('home');
   const [activeId, setActiveId] = useState<string | null>(null);
   
-  // 关键修复：显式给 collections 状态声明为 any[] 类型，绕过 Vercel 严格检查
   const [dataState, setDataState] = useState<{
     collections: any[];
     settings: any;
@@ -266,7 +274,6 @@ export default function App() {
       setDataState({ collections: formattedData, settings: result.settings, loading: false, error: false });
     } catch (err) {
       console.warn("Fetch failed, likely CORS or Network. Using fallback mock data for stability.", err);
-      // 容错处理：即使 API 挂了，也提供符合格式的模拟数据，确保 Build 能过
       const mockCollections = [
         {
           _id: 'mock-1',
