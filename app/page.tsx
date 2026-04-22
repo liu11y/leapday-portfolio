@@ -10,21 +10,28 @@ const API_VERSION = '2024-04-21';
 
 /**
  * 顶级智能图片优化引擎
- * 支持 Sanity 原生裁剪、Cloudflare 极速图床、中文乱码修复、协议头自动补全
  */
 const optimizeImage = (url: any, width = 1200, quality = 75) => {
   if (!url) return ""; 
   
   let finalUrl = String(url).trim();
 
-  // 修复 1：自动补全协议头 (防止只填了域名)
+  // 针对你的个人图床精准截取：GitHub 网页链接 -> Cloudflare 加速链接
+  if (finalUrl.includes('github.com/liu11y/leapday-images/blob/main/')) {
+    finalUrl = finalUrl.replace(/https?:\/\/github\.com\/liu11y\/leapday-images\/blob\/main\//i, 'https://leapday-images.pages.dev/');
+  } 
+  // 针对你的个人图床精准截取：GitHub 原始数据链接 -> Cloudflare 加速链接
+  else if (finalUrl.includes('raw.githubusercontent.com/liu11y/leapday-images/main/')) {
+    finalUrl = finalUrl.replace(/https?:\/\/raw\.githubusercontent\.com\/liu11y\/leapday-images\/main\//i, 'https://leapday-images.pages.dev/');
+  }
+
+  // 自动补全协议头
   if (finalUrl.startsWith('leapday-images')) {
     finalUrl = `https://${finalUrl}`;
   } else if (!finalUrl.startsWith('http') && (finalUrl.includes('pages.dev') || finalUrl.includes('workers.dev'))) {
     finalUrl = `https://${finalUrl}`;
   }
 
-  // 修复 2：处理中文或特殊字符乱码
   try {
     if (finalUrl.includes('%')) {
       finalUrl = decodeURIComponent(finalUrl);
@@ -33,12 +40,10 @@ const optimizeImage = (url: any, width = 1200, quality = 75) => {
     console.warn("URL 解码失败:", e);
   }
 
-  // 优化：如果是 Sanity 自带的图，启用动态裁剪压缩
   if (finalUrl.includes('cdn.sanity.io')) {
     return `${finalUrl}?w=${width}&q=${quality}&auto=format&fit=max`;
   }
   
-  // Cloudflare 图床直接返回极速链接
   return finalUrl;
 };
 
@@ -49,7 +54,6 @@ const ProgressiveImage = ({ src, lqip, alt, imgClassName = "" }: any) => {
 
   return (
     <div className="relative w-full h-full bg-[#0a0a0a] overflow-hidden">
-      {/* 模糊占位图 */}
       {lqip && !isLoaded && (
         <img
           src={lqip}
@@ -57,8 +61,6 @@ const ProgressiveImage = ({ src, lqip, alt, imgClassName = "" }: any) => {
           className="absolute inset-0 w-full h-full object-cover blur-3xl scale-110 opacity-40 transition-opacity duration-1000"
         />
       )}
-      
-      {/* 真实高清图 */}
       <img
         src={src}
         alt={alt}
@@ -72,8 +74,6 @@ const ProgressiveImage = ({ src, lqip, alt, imgClassName = "" }: any) => {
           isLoaded ? 'opacity-100' : 'opacity-0'
         } ${imgClassName}`}
       />
-
-      {/* 错误提示层 */}
       {error && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-gray-900/50 text-gray-600">
           <AlertCircle size={16} className="mb-2 opacity-30" />
@@ -111,7 +111,6 @@ const FadeInSection = ({ children, delay = 0, className = "" }: any) => {
 
 // 【首页视图】
 const Home = ({ collections, settings }: any) => {
-  // 智能抓取首页背景图：优先视频 > 全局设置外链图 > 全局设置本地图 > 最新作品集封面外链 > 最新作品集封面本地图
   const heroImg = optimizeImage(
     settings?.heroImageUrl || settings?.heroImage || collections[0]?.coverImageUrl || collections[0]?.coverImage, 
     2000
@@ -131,7 +130,6 @@ const Home = ({ collections, settings }: any) => {
 
   return (
     <div className="bg-[#0a0a0a] text-white min-h-screen w-full">
-      {/* 首页全屏头图区 */}
       <div className="relative h-[100svh] min-h-[500px] w-full flex items-center justify-center overflow-hidden bg-black">
         <div className="absolute inset-0 z-0">
           {heroVideo ? (
@@ -159,7 +157,6 @@ const Home = ({ collections, settings }: any) => {
         </div>
       </div>
 
-      {/* 首页最新作品集列表 */}
       <div className="max-w-7xl mx-auto px-5 md:px-8 py-32">
         <FadeInSection className="flex justify-between items-end mb-16 border-b border-white/10 pb-8">
           <h2 className="text-2xl md:text-4xl font-light tracking-tight">最新记录</h2>
@@ -274,7 +271,6 @@ const Archive = ({ collections }: any) => {
 
 // --- 5. 核心前端引擎与路由调度 ---
 
-// 紧急备用数据 (Mock Data)：用于绕过临时预览环境的跨域限制
 const MOCK_DATA = {
   settings: {
     mainTitle: "NEO DREAM",
@@ -293,17 +289,6 @@ const MOCK_DATA = {
         { url: "https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=1600&q=80" },
         { url: "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=1600&q=80" }
       ]
-    },
-    {
-      _id: "mock2",
-      title: "Minimalist Space",
-      date: "2024.12",
-      shortIntro: "Exploring geometric shapes and natural light.",
-      tags: ["Architecture", "Light"],
-      coverImageUrl: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=800&q=80",
-      images: [
-        { url: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1600&q=80" }
-      ]
     }
   ]
 };
@@ -318,12 +303,14 @@ export default function App() {
   const fetchData = async () => {
     setData((prev: any) => ({ ...prev, loading: true, error: false, isMock: false }));
     try {
+      // GROQ 查询新增拉取 bulkExternalUrls 字段
       const query = encodeURIComponent(`{
         "collections": *[_type == "collection"] | order(date desc) {
           _id, title, date, shortIntro, tags,
           "coverImage": coverImage.asset->url,
           "coverImageUrl": coverImageUrl,
           "coverImageLqip": coverImage.asset->metadata.lqip,
+          "bulkExternalUrls": bulkExternalUrls,
           "images": images[] {
              "url": coalesce(externalUrl, imageAsset.asset->url),
              "lqip": imageAsset.asset->metadata.lqip
@@ -343,7 +330,22 @@ export default function App() {
       if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
       
       const { result } = await res.json();
-      setData({ collections: result.collections || [], settings: result.settings || {}, loading: false, error: false, isMock: false });
+
+      // 核心：处理批量外链
+      const formattedCollections = (result.collections || []).map((item: any) => {
+        // 1. 将回车换行分割成数组，并剔除空行
+        const bulkUrls = item.bulkExternalUrls 
+          ? item.bulkExternalUrls.split(/\r?\n/).map((u: string) => ({ url: u.trim() })).filter((img: any) => img.url)
+          : [];
+        
+        // 2. 将批量链接与单张上传的链接合并
+        return {
+          ...item,
+          images: [...(item.images || []), ...bulkUrls]
+        };
+      });
+
+      setData({ collections: formattedCollections, settings: result.settings || {}, loading: false, error: false, isMock: false });
     } catch (err) {
       console.error("Fetch Error (可能是预览环境跨域限制):", err);
       setData((prev: any) => ({ ...prev, loading: false, error: true }));
@@ -352,7 +354,6 @@ export default function App() {
 
   useEffect(() => { 
     fetchData(); 
-    // 监听 URL Hash 变化实现原生路由
     const handleHash = () => {
       const hash = window.location.hash.replace('#', '');
       if (!hash) { setCurrentRoute('home'); setActiveId(null); }
@@ -370,7 +371,6 @@ export default function App() {
     </div>
   );
 
-  // 跨域拦截容错界面：提供一键预览测试数据的选项
   if (data.error) return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-center text-gray-400 font-mono text-[10px] p-6 text-center">
       <AlertCircle size={32} className="mb-4 text-red-900 opacity-80" />
@@ -399,12 +399,10 @@ export default function App() {
 
   return (
     <div className="antialiased bg-[#0a0a0a]">
-      {/* 路由视图渲染 */}
       {currentRoute === 'home' && <Home collections={data.collections} settings={data.settings} />}
       {currentRoute === 'detail' && activeCollection && <Detail collection={activeCollection} />}
       {currentRoute === 'archive' && <Archive collections={data.collections} />}
       
-      {/* 底部版权与隐藏调试面板 */}
       <footer 
         className="bg-black py-24 text-center border-t border-white/5 opacity-30 text-[8px] tracking-[0.4em] uppercase cursor-pointer hover:opacity-80 transition-opacity"
         onDoubleClick={() => setShowDebug(!showDebug)}
@@ -413,7 +411,6 @@ export default function App() {
         © {new Date().getFullYear()} LEAPDAY. ALL RIGHTS RESERVED.
         <br/><span className="mt-2 block opacity-40">Capturing Moments Through The Lens.</span>
         
-        {/* Mock 状态警告提示 */}
         {data.isMock && (
           <span className="mt-6 text-[#E7B84A] font-bold tracking-widest bg-[#E7B84A]/10 py-2 px-4 inline-block rounded-sm">
             ⚠️ 正在使用本地测试数据 (MOCK DATA) 预览
@@ -421,7 +418,6 @@ export default function App() {
         )}
       </footer>
 
-      {/* 隐藏的开发者数据查看面板（底部双击唤出） */}
       {showDebug && (
         <div className="fixed bottom-0 left-0 w-full p-6 bg-[#111] border-t border-[#E7B84A]/30 z-[9999] text-[10px] font-mono max-h-[50vh] overflow-auto shadow-2xl">
           <div className="flex justify-between mb-4 border-b border-white/10 pb-4">
@@ -433,9 +429,6 @@ export default function App() {
           <pre className="text-gray-300 bg-black p-4 rounded-sm">
             {JSON.stringify(data.settings, null, 2)}
           </pre>
-          <div className="mt-4 p-3 bg-[#E7B84A]/10 text-[#E7B84A] rounded-sm">
-            如果看到 heroImageUrl 是正确的 Cloudflare 链接且网站仍黑屏，说明图床文件不存在；如果没有 heroImageUrl 字段，请检查 Vercel 的 Studio 是否已重新构建。
-          </div>
         </div>
       )}
     </div>
