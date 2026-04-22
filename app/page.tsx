@@ -8,13 +8,44 @@ const PROJECT_ID = 'u6xbvj35';
 const DATASET = 'production';
 const API_VERSION = '2024-04-21';
 
-// 苹果级图片动态优化引擎
-const optimizeImage = (url: string, width = 1200, quality = 80) => {
+// 苹果级图片动态优化引擎 (稍微降低默认 quality 以适应国内网络，全面使用 webp)
+const optimizeImage = (url: string, width = 1200, quality = 75) => {
   if (!url) return ""; 
   return `${url}?w=${width}&q=${quality}&auto=format&fit=max`;
 };
 
-// --- 2. 动画钩子 (修复缩放导致的隐藏 Bug) ---
+// --- 2. 渐进式图片加载组件 (解决网络慢时的白屏痛点) ---
+const ProgressiveImage = ({ src, lqip, alt, imgClassName = "", containerClassName = "" }: any) => {
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  return (
+    <div className={`relative w-full h-full bg-[#111] overflow-hidden ${containerClassName}`}>
+      {/* 极低像素占位图 (LQIP) - 瞬间加载，带高斯模糊 */}
+      {lqip && (
+        <img
+          src={lqip}
+          alt=""
+          aria-hidden="true"
+          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 blur-xl scale-110 ${
+            isLoaded ? 'opacity-0' : 'opacity-100'
+          }`}
+        />
+      )}
+      {/* 实际高清大图 - 懒加载，完成后平滑显现 */}
+      <img
+        src={src}
+        alt={alt}
+        loading="lazy"
+        onLoad={() => setIsLoaded(true)}
+        className={`w-full h-full object-cover transition-opacity duration-1000 ${
+          isLoaded ? 'opacity-100' : 'opacity-0'
+        } ${imgClassName}`}
+      />
+    </div>
+  );
+};
+
+// --- 3. 动画钩子 ---
 const useFadeIn = () => {
   const domRef = useRef<HTMLDivElement>(null);
   const [isVisible, setVisible] = useState(false);
@@ -22,7 +53,6 @@ const useFadeIn = () => {
   useEffect(() => {
     const observer = new IntersectionObserver(entries => {
       entries.forEach(entry => {
-        // 一旦出现在视口中，就永久设为 true，防止浏览器缩放导致元素闪烁消失
         if (entry.isIntersecting) {
           setVisible(true);
         }
@@ -52,27 +82,24 @@ const FadeInSection = ({ children, delay = 0, className = "" }: any) => {
   );
 };
 
-// --- 3. 页面组件 ---
+// --- 4. 页面组件 ---
 
 // 【首页】
 const Home = ({ collections, settings }: { collections: any[], settings: any }) => {
   const heroImg = optimizeImage(settings?.heroImage || collections[0]?.coverImage, 2000, 85);
-  const heroVideo = settings?.heroVideo; // 获取后台传来的视频 URL
+  const heroLqip = settings?.heroImageLqip || collections[0]?.coverImageLqip;
+  const heroVideo = settings?.heroVideo; 
   const mainTitle = settings?.mainTitle || "leapday";
   const subTitle = settings?.subtitle || "";
 
-  // 核心修复：移动端视频自动播放强制触发器
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (videoRef.current && heroVideo) {
-      // 强制在 DOM 层面设置静音（绕过部分移动端浏览器的策略检测）
       videoRef.current.defaultMuted = true;
       videoRef.current.muted = true;
-      
-      // 尝试强行唤起播放
       videoRef.current.play().catch(error => {
-        console.warn("手机端自动播放被拦截 (可能手机开启了省电模式):", error);
+        console.warn("手机端自动播放被拦截:", error);
       });
     }
   }, [heroVideo]);
@@ -81,7 +108,6 @@ const Home = ({ collections, settings }: { collections: any[], settings: any }) 
     <div className="bg-[#0a0a0a] text-white min-h-screen overflow-x-hidden w-full">
       <div className="relative h-[100svh] min-h-[500px] w-full flex items-center justify-center overflow-hidden bg-black">
         <div className="absolute inset-0 z-0">
-          {/* 视频优先逻辑：如果有视频则播放视频，否则退化显示图片 */}
           {heroVideo ? (
             <video 
               ref={videoRef}
@@ -89,24 +115,24 @@ const Home = ({ collections, settings }: { collections: any[], settings: any }) 
               autoPlay 
               loop 
               muted 
-              defaultMuted // 补充 React 缺失的默认静音属性
-              playsInline  // iOS Safari 必须属性，防止全屏劫持
+              defaultMuted 
+              playsInline  
               poster={heroImg}
               className="w-full h-full object-cover opacity-60 md:opacity-50 scale-105"
             />
           ) : heroImg ? (
-            <img 
-              src={heroImg} 
-              alt="Hero" 
-              className="w-full h-full object-cover opacity-50 md:opacity-40 scale-105 animate-pulse-slow transition-opacity duration-1000"
-              loading="eager" 
+            // 首屏图片也支持模糊加载
+            <ProgressiveImage
+              src={heroImg}
+              lqip={heroLqip}
+              alt="Hero"
+              imgClassName="opacity-50 md:opacity-40 scale-105 animate-pulse-slow transition-opacity duration-1000"
             />
           ) : null}
           <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/40 to-[#0a0a0a]"></div>
         </div>
         
         <div className="relative z-10 text-center flex flex-col items-center px-4 w-full max-w-[95vw] mx-auto">
-          {/* 主标题防呆折行 */}
           <h1 className="text-5xl sm:text-7xl md:text-8xl lg:text-9xl font-normal tracking-tight text-[#E7B84A] drop-shadow-2xl mb-4 leading-tight text-balance">
             {mainTitle}
           </h1>
@@ -132,19 +158,18 @@ const Home = ({ collections, settings }: { collections: any[], settings: any }) 
           {collections.map((collection: any, idx: number) => (
             <FadeInSection key={collection._id} delay={idx * 100}>
               <a href={`#detail-${collection._id}`} className="group cursor-pointer block w-full">
-                <div className="relative overflow-hidden rounded-sm aspect-[4/5] mb-6 bg-gray-900 shadow-[0_20px_50px_rgba(0,0,0,0.5)] w-full">
+                <div className="relative overflow-hidden rounded-sm aspect-[4/5] mb-6 shadow-[0_20px_50px_rgba(0,0,0,0.5)] w-full bg-gray-900">
                   {collection.coverImage && (
-                    <img 
-                      src={optimizeImage(collection.coverImage, 1000)} 
+                    <ProgressiveImage
+                      src={optimizeImage(collection.coverImage, 1000)}
+                      lqip={collection.coverImageLqip}
                       alt={collection.title}
-                      className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105 opacity-90 group-hover:opacity-100"
-                      loading="lazy"
+                      imgClassName="group-hover:scale-105 opacity-90 group-hover:opacity-100"
                     />
                   )}
-                  <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 hidden md:block"
+                  <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-700 hidden md:block pointer-events-none"
                        style={{ background: `linear-gradient(to top, ${collection.dominantColor}aa, transparent)` }} />
                 </div>
-                {/* 列表严格左对齐 */}
                 <div className="flex flex-col sm:flex-row justify-between items-start gap-2 w-full text-left">
                   <div className="pr-4 flex-1 text-left">
                     <h3 className="text-xl md:text-2xl font-medium mb-2 group-hover:text-[#E7B84A] transition-colors leading-tight tracking-tight">{collection.title}</h3>
@@ -188,7 +213,6 @@ const GalleryDetail = ({ collection }: { collection: any }) => {
 
         <div className="pt-32 pb-16 md:pt-48 md:pb-32 w-full px-5 md:px-8 max-w-5xl mx-auto">
           <FadeInSection>
-            {/* 详情页标题保持居中对齐 */}
             <div className="mb-16 md:mb-20 text-center max-w-4xl mx-auto">
               <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-normal mb-6 tracking-tight leading-tight text-balance">{collection.title}</h1>
               <p className="text-base md:text-xl text-gray-300 font-light leading-relaxed mb-8">{collection.shortIntro}</p>
@@ -205,18 +229,24 @@ const GalleryDetail = ({ collection }: { collection: any }) => {
         </div>
 
         <div className="space-y-6 md:space-y-32 flex flex-col items-center w-full pb-32">
-          {collection.images?.map((imgSrc: string, idx: number) => (
-            <FadeInSection key={idx} className="w-full max-w-6xl mx-auto px-0 md:px-8">
-              <div className="w-full bg-gray-900 md:rounded-sm min-h-[40vh] flex items-center justify-center overflow-hidden">
-                <img 
-                  src={optimizeImage(imgSrc, 1600)} 
-                  alt={`${collection.title} - ${idx + 1}`}
-                  className="w-full h-auto object-cover md:rounded-sm shadow-2xl transition-all duration-1000"
-                  loading="lazy"
-                />
-              </div>
-            </FadeInSection>
-          ))}
+          {collection.images?.map((imgObj: any, idx: number) => {
+            // 兼容新旧数据结构：如果之前存的是字符串，直接取用；如果是包含了 lqip 的新对象，则解构取出
+            const imgSrc = typeof imgObj === 'string' ? imgObj : imgObj?.url;
+            const imgLqip = typeof imgObj === 'string' ? null : imgObj?.lqip;
+
+            return (
+              <FadeInSection key={idx} className="w-full max-w-6xl mx-auto px-0 md:px-8">
+                <div className="w-full bg-gray-900 md:rounded-sm min-h-[40vh] shadow-2xl flex items-center justify-center overflow-hidden">
+                  <ProgressiveImage 
+                    src={optimizeImage(imgSrc, 1600)} 
+                    lqip={imgLqip}
+                    alt={`${collection.title} - ${idx + 1}`}
+                    imgClassName="md:rounded-sm"
+                  />
+                </div>
+              </FadeInSection>
+            );
+          })}
         </div>
       </div>
     </div>
@@ -242,7 +272,12 @@ const Archive = ({ collections }: { collections: any[] }) => {
             <FadeInSection key={collection._id}>
               <a href={`#detail-${collection._id}`} className="group block text-left">
                 <div className="relative aspect-square overflow-hidden mb-3 bg-gray-900 rounded-sm w-full">
-                  <img src={optimizeImage(collection.coverImage, 500)} className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110 opacity-80 group-hover:opacity-100" />
+                  <ProgressiveImage
+                    src={optimizeImage(collection.coverImage, 500)}
+                    lqip={collection.coverImageLqip}
+                    alt={collection.title}
+                    imgClassName="group-hover:scale-110 opacity-80 group-hover:opacity-100"
+                  />
                 </div>
                 <h3 className="text-xs md:text-sm font-medium group-hover:text-[#E7B84A] transition-colors line-clamp-1 tracking-tight text-left">{collection.title}</h3>
                 <span className="text-[9px] text-gray-500 font-mono mt-1 uppercase tracking-tighter text-left block">{collection.date}</span>
@@ -275,14 +310,19 @@ export default function App() {
   const fetchData = async () => {
     setDataState(prev => ({ ...prev, loading: true, error: false }));
     try {
+      // 深度优化：请求 GROQ 数据时，直接要求 Sanity 把 "lqip"（几十KB的极模糊占位图 base64 字符串）一起打包传过来。
       const query = `*[_type == "collection" && defined(coverImage)] | order(date desc) {
         _id, title, date, shortIntro, tags,
         "dominantColor": coverImage.asset->metadata.palette.darkMuted.background,
         "coverImage": coverImage.asset->url,
-        "images": images[].asset->url
+        "coverImageLqip": coverImage.asset->metadata.lqip,
+        "images": images[].asset->{ "url": url, "lqip": metadata.lqip }
       }`;
       const settingsQuery = `*[_type == "siteSettings"] | order(_updatedAt desc)[0] {
-        mainTitle, subtitle, "heroImage": heroImage.asset->url, "heroVideo": heroVideo.asset->url
+        mainTitle, subtitle, 
+        "heroImage": heroImage.asset->url, 
+        "heroImageLqip": heroImage.asset->metadata.lqip,
+        "heroVideo": heroVideo.asset->url
       }`;
 
       const fullQuery = encodeURIComponent(`{
@@ -313,7 +353,8 @@ export default function App() {
           tags: ['Japan', 'Travel'],
           dominantColor: '#8b3a3a',
           coverImage: 'https://images.unsplash.com/photo-1493780474015-ba834fd0ce2f?auto=format&fit=crop&w=1200&q=80',
-          images: ['https://images.unsplash.com/photo-1493780474015-ba834fd0ce2f?auto=format&fit=crop&w=2000&q=80']
+          coverImageLqip: null,
+          images: [{ url: 'https://images.unsplash.com/photo-1493780474015-ba834fd0ce2f?auto=format&fit=crop&w=2000&q=80', lqip: null }]
         }
       ];
       setDataState({ 
