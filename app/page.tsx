@@ -54,6 +54,7 @@ const ProgressiveImage = ({ src, lqip, alt, imgClassName = "" }: any) => {
 
   return (
     <div className="relative w-full h-full bg-[#0a0a0a] overflow-hidden">
+      {/* 模糊占位图 */}
       {lqip && !isLoaded && (
         <img
           src={lqip}
@@ -347,8 +348,9 @@ export default function App() {
 
       setData({ collections: formattedCollections, settings: result.settings || {}, loading: false, error: false, isMock: false });
     } catch (err) {
-      console.error("Fetch Error (可能是预览环境跨域限制):", err);
-      setData((prev: any) => ({ ...prev, loading: false, error: true }));
+      console.error("Fetch Error (可能是预览环境跨域限制，自动启用 Mock 数据):", err);
+      // 自动回退到模拟数据，确保预览环境正常运行
+      setData({ collections: MOCK_DATA.collections, settings: MOCK_DATA.settings, loading: false, error: false, isMock: true });
     }
   };
 
@@ -371,34 +373,11 @@ export default function App() {
     </div>
   );
 
-  if (data.error) return (
-    <div className="min-h-screen bg-black flex flex-col items-center justify-center text-gray-400 font-mono text-[10px] p-6 text-center">
-      <AlertCircle size={32} className="mb-4 text-red-900 opacity-80" />
-      <p className="mb-2 tracking-[0.3em] text-red-500 font-bold uppercase">Sanity CORS / Fetch Error</p>
-      <div className="mb-6 max-w-lg opacity-60 leading-relaxed text-left bg-[#111] p-5 rounded-sm border border-red-900/30 shadow-2xl">
-        <p className="mb-2"><strong>请求被拒绝 (Failed to fetch)</strong>。这是由于当前右侧预览环境的临时域名触发了 Sanity 数据库的安全机制 (CORS)。</p>
-        <p className="mb-4">这<strong>并不代表代码有问题</strong>，当您在本地运行或者将代码部署到 Vercel 后，只需将正式域名添加到 Sanity 的 CORS 白名单中即可恢复正常。</p>
-        <div className="break-all bg-black p-3 text-[9px] text-gray-500 border border-white/5 font-mono">
-          被拦截的域名环境：<br/>
-          <span className="text-[#E7B84A]">{typeof window !== 'undefined' ? window.location.origin : 'unknown'}</span>
-        </div>
-      </div>
-      <div className="flex flex-wrap justify-center gap-4">
-        <button onClick={fetchData} className="px-6 py-2 border border-white/10 hover:border-[#E7B84A] hover:text-[#E7B84A] transition-all uppercase">重试连接</button>
-        <button 
-          onClick={() => setData({ collections: MOCK_DATA.collections, settings: MOCK_DATA.settings, loading: false, error: false, isMock: true })} 
-          className="px-6 py-2 bg-[#E7B84A]/10 text-[#E7B84A] hover:bg-[#E7B84A]/20 transition-all uppercase font-bold"
-        >
-          使用测试数据强制预览 UI
-        </button>
-      </div>
-    </div>
-  );
-
   const activeCollection = data.collections.find((c: any) => c._id === activeId);
 
   return (
     <div className="antialiased bg-[#0a0a0a]">
+      {/* 路由视图渲染 */}
       {currentRoute === 'home' && <Home collections={data.collections} settings={data.settings} />}
       {currentRoute === 'detail' && activeCollection && <Detail collection={activeCollection} />}
       {currentRoute === 'archive' && <Archive collections={data.collections} />}
@@ -411,6 +390,7 @@ export default function App() {
         © {new Date().getFullYear()} LEAPDAY. ALL RIGHTS RESERVED.
         <br/><span className="mt-2 block opacity-40">Capturing Moments Through The Lens.</span>
         
+        {/* Mock 状态警告提示 */}
         {data.isMock && (
           <span className="mt-6 text-[#E7B84A] font-bold tracking-widest bg-[#E7B84A]/10 py-2 px-4 inline-block rounded-sm">
             ⚠️ 正在使用本地测试数据 (MOCK DATA) 预览
@@ -418,6 +398,7 @@ export default function App() {
         )}
       </footer>
 
+      {/* 隐藏的开发者数据查看面板（底部双击唤出） */}
       {showDebug && (
         <div className="fixed bottom-0 left-0 w-full p-6 bg-[#111] border-t border-[#E7B84A]/30 z-[9999] text-[10px] font-mono max-h-[50vh] overflow-auto shadow-2xl">
           <div className="flex justify-between mb-4 border-b border-white/10 pb-4">
