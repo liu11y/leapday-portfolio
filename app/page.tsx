@@ -61,6 +61,22 @@ const Home = ({ collections, settings }: { collections: any[], settings: any }) 
   const mainTitle = settings?.mainTitle || "leapday";
   const subTitle = settings?.subtitle || "";
 
+  // 核心修复：移动端视频自动播放强制触发器
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (videoRef.current && heroVideo) {
+      // 强制在 DOM 层面设置静音（绕过部分移动端浏览器的策略检测）
+      videoRef.current.defaultMuted = true;
+      videoRef.current.muted = true;
+      
+      // 尝试强行唤起播放
+      videoRef.current.play().catch(error => {
+        console.warn("手机端自动播放被拦截 (可能手机开启了省电模式):", error);
+      });
+    }
+  }, [heroVideo]);
+
   return (
     <div className="bg-[#0a0a0a] text-white min-h-screen overflow-x-hidden w-full">
       <div className="relative h-[100svh] min-h-[500px] w-full flex items-center justify-center overflow-hidden bg-black">
@@ -68,11 +84,13 @@ const Home = ({ collections, settings }: { collections: any[], settings: any }) 
           {/* 视频优先逻辑：如果有视频则播放视频，否则退化显示图片 */}
           {heroVideo ? (
             <video 
+              ref={videoRef}
               src={heroVideo} 
               autoPlay 
               loop 
               muted 
-              playsInline
+              defaultMuted // 补充 React 缺失的默认静音属性
+              playsInline  // iOS Safari 必须属性，防止全屏劫持
               poster={heroImg}
               className="w-full h-full object-cover opacity-60 md:opacity-50 scale-105"
             />
@@ -205,7 +223,7 @@ const GalleryDetail = ({ collection }: { collection: any }) => {
   );
 };
 
-// 【归档页】（被误删的组件已完整恢复）
+// 【归档页】
 const Archive = ({ collections }: { collections: any[] }) => {
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
@@ -263,7 +281,6 @@ export default function App() {
         "coverImage": coverImage.asset->url,
         "images": images[].asset->url
       }`;
-      // 加入 heroVideo 查询支持
       const settingsQuery = `*[_type == "siteSettings"] | order(_updatedAt desc)[0] {
         mainTitle, subtitle, "heroImage": heroImage.asset->url, "heroVideo": heroVideo.asset->url
       }`;
@@ -287,7 +304,6 @@ export default function App() {
       setDataState({ collections: formattedData, settings: result.settings, loading: false, error: false });
     } catch (err) {
       console.warn("Fetch failed, using fallback mock data for stability.", err);
-      // 容错处理：确保即使网络出错，页面也能优雅渲染，不会白屏报错
       const mockCollections = [
         {
           _id: 'mock-1',
