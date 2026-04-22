@@ -129,6 +129,9 @@ const Home = ({ collections, settings }: any) => {
     }
   }, [heroVideo]);
 
+  // 智能检测：是否填写了标题或副标题
+  const hasText = Boolean(settings?.mainTitle || settings?.subtitle);
+
   return (
     <div className="bg-[#0a0a0a] text-white min-h-screen w-full">
       <div className="relative h-[100svh] min-h-[500px] w-full flex items-center justify-center overflow-hidden bg-black">
@@ -138,18 +141,22 @@ const Home = ({ collections, settings }: any) => {
               ref={videoRef}
               src={heroVideo} 
               autoPlay loop muted playsInline 
-              className="w-full h-full object-cover opacity-60 md:opacity-40 scale-105" 
+              className={`w-full h-full object-cover scale-105 transition-all duration-1000 ${hasText ? 'opacity-80 md:opacity-70' : 'opacity-100'}`} 
             />
           ) : heroImg ? (
-            <ProgressiveImage src={heroImg} lqip={settings?.heroImageLqip} alt="Hero" imgClassName="opacity-50 md:opacity-40 scale-105 animate-pulse-slow" />
+            <ProgressiveImage 
+              src={heroImg} 
+              lqip={settings?.heroImageLqip} 
+              alt="Hero" 
+              imgClassName={`scale-105 animate-pulse-slow transition-all duration-1000 ${hasText ? 'opacity-80 md:opacity-70' : 'opacity-100'}`} 
+            />
           ) : (
             <div className="w-full h-full bg-[#0a0a0a]" />
           )}
-          <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/40 to-[#0a0a0a]"></div>
+          <div className={`absolute inset-0 bg-gradient-to-b ${hasText ? 'from-black/10 via-black/20 to-[#0a0a0a]' : 'from-transparent via-transparent to-[#0a0a0a]'}`}></div>
         </div>
         
         <div className="relative z-10 text-center px-4 w-full">
-          {/* 主标题和副标题只有在有内容时才渲染，移除了默认占位符 */}
           {settings?.mainTitle && (
             <h1 className="text-5xl sm:text-7xl md:text-8xl lg:text-9xl font-normal tracking-tighter text-[#E7B84A] drop-shadow-2xl mb-4 uppercase">
               {settings.mainTitle}
@@ -295,6 +302,17 @@ const MOCK_DATA = {
         { url: "https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=1600&q=80" },
         { url: "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=1600&q=80" }
       ]
+    },
+    {
+      _id: "mock2",
+      title: "Minimalist Space",
+      date: "2024.12",
+      shortIntro: "Exploring geometric shapes and natural light.",
+      tags: ["Architecture", "Light"],
+      coverImageUrl: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=800&q=80",
+      images: [
+        { url: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1600&q=80" }
+      ]
     }
   ]
 };
@@ -377,6 +395,7 @@ export default function App() {
 
   return (
     <div className="antialiased bg-[#0a0a0a]">
+      {/* 路由视图渲染 */}
       {currentRoute === 'home' && <Home collections={data.collections} settings={data.settings} />}
       {currentRoute === 'detail' && activeCollection && <Detail collection={activeCollection} />}
       {currentRoute === 'archive' && <Archive collections={data.collections} />}
@@ -389,6 +408,7 @@ export default function App() {
         © {new Date().getFullYear()} LEAPDAY. ALL RIGHTS RESERVED.
         <br/><span className="mt-2 block opacity-40">Capturing Moments Through The Lens.</span>
         
+        {/* Mock 状态警告提示 */}
         {data.isMock && (
           <span className="mt-6 text-[#E7B84A] font-bold tracking-widest bg-[#E7B84A]/10 py-2 px-4 inline-block rounded-sm">
             ⚠️ 正在使用本地测试数据 (MOCK DATA) 预览
