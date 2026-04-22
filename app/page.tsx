@@ -138,7 +138,7 @@ const Home = ({ collections, settings }: any) => {
             <video 
               ref={videoRef}
               src={heroVideo} 
-              autoPlay loop muted defaultMuted playsInline 
+              autoPlay loop muted playsInline 
               className="w-full h-full object-cover opacity-60 md:opacity-40 scale-105" 
             />
           ) : heroImg ? (
