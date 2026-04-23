@@ -131,7 +131,7 @@ export default function WeddingInvitation() {
   );
 
   return (
-    <div className="bg-[#0a0a0a] text-white min-h-screen w-full font-sans overflow-x-hidden selection:bg-[#E7B84A]/30 selection:text-white">
+    <div className="antialiased bg-[#0a0a0a] text-white min-h-screen w-full overflow-x-hidden selection:bg-[#E7B84A]/30 selection:text-white">
       <audio ref={audioRef} src={data.music || MOCK_DATA.music} loop />
 
       <button 
