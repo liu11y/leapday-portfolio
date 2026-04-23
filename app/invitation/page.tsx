@@ -143,7 +143,7 @@ export default function WeddingInvitation() {
 
       <div className="relative h-[100svh] w-full flex flex-col items-center justify-center overflow-hidden">
         <div className="absolute inset-0 z-0">
-          <ProgressiveImage src={optimizeImage(data.heroImage || MOCK_DATA.heroImage)} alt="Hero" imgClassName="opacity-60 scale-105" />
+          <ProgressiveImage src={optimizeImage(data.heroImage || MOCK_DATA.heroImage)} alt="Hero" imgClassName="opacity-60" />
           <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a0a]/20 via-transparent to-[#0a0a0a]"></div>
         </div>
         
@@ -151,8 +151,8 @@ export default function WeddingInvitation() {
           <p className="text-[#E7B84A] tracking-[0.4em] uppercase text-[10px] md:text-xs font-light mb-8 opacity-80">
             Save The Date
           </p>
-          <h1 className="text-6xl md:text-8xl font-light tracking-tighter text-white drop-shadow-2xl mb-4">
-            {data.groom} <span className="text-[#E7B84A] text-4xl md:text-6xl italic mx-2">&amp;</span> {data.bride}
+          <h1 className="text-6xl md:text-8xl font-light tracking-tighter text-[#E7B84A] drop-shadow-2xl mb-4">
+            {data.groom} <span className="text-4xl md:text-6xl italic mx-2">&amp;</span> {data.bride}
           </h1>
           <div className="w-[1px] h-12 bg-[#E7B84A]/50 my-6"></div>
           <p className="text-gray-300 tracking-[0.3em] font-mono text-xs md:text-sm uppercase">
