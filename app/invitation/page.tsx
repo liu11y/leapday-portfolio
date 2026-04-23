@@ -81,7 +81,10 @@ const MOCK_DATA = {
 export default function WeddingInvitation() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  
+  // 音乐与盲盒引导页状态
   const [isPlaying, setIsPlaying] = useState(false);
+  const [hasEntered, setHasEntered] = useState(false); // 新增：是否已拆开请柬
   const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
@@ -94,7 +97,6 @@ export default function WeddingInvitation() {
         const { result } = await res.json();
         
         if (result) {
-          // 将批量文本链接按行切割为数组
           const parsedGallery = result.galleryUrls 
             ? result.galleryUrls.split(/\r?\n/).map((u: string) => u.trim()).filter(Boolean)
             : [];
@@ -104,7 +106,7 @@ export default function WeddingInvitation() {
             gallery: parsedGallery
           });
         } else {
-          setData(MOCK_DATA); // 数据库未建立时使用测试数据
+          setData(MOCK_DATA);
         }
       } catch (err) {
         console.error("请柬拉取失败", err);
@@ -115,6 +117,15 @@ export default function WeddingInvitation() {
     };
     fetchInvitation();
   }, []);
+
+  // 拆开请柬事件 (解锁音乐)
+  const handleEnter = () => {
+    setHasEntered(true);
+    if (audioRef.current) {
+      audioRef.current.play().catch(e => console.log("自动播放仍然受限:", e));
+      setIsPlaying(true);
+    }
+  };
 
   const toggleMusic = () => {
     if (audioRef.current) {
@@ -131,8 +142,30 @@ export default function WeddingInvitation() {
   );
 
   return (
-    <div className="antialiased bg-[#0a0a0a] text-white min-h-screen w-full overflow-x-hidden selection:bg-[#E7B84A]/30 selection:text-white">
+    // 如果还没进入，强制锁定页面不可滑动
+    <div className={`antialiased bg-[#0a0a0a] text-white min-h-screen w-full overflow-x-hidden selection:bg-[#E7B84A]/30 selection:text-white ${!hasEntered ? 'h-screen overflow-hidden' : ''}`}>
       <audio ref={audioRef} src={data.music || MOCK_DATA.music} loop />
+
+      {/* --- 新增：开盲盒沉浸式引导页 --- */}
+      <div 
+        className={`fixed inset-0 z-[9999] bg-[#0a0a0a] flex flex-col items-center justify-center transition-all duration-[1500ms] ease-in-out cursor-pointer ${
+          hasEntered ? 'opacity-0 pointer-events-none -translate-y-20' : 'opacity-100'
+        }`}
+        onClick={handleEnter}
+      >
+        <div className="text-[#E7B84A] mb-8 opacity-80">
+          <Heart size={28} className="mx-auto" strokeWidth={1.5} />
+        </div>
+        <p className="text-white text-xl md:text-2xl font-light tracking-[0.2em] mb-4 uppercase">
+          {data.groom} <span className="text-[#E7B84A] mx-2 italic">&amp;</span> {data.bride}
+        </p>
+        <p className="text-gray-500 text-[10px] tracking-[0.5em] uppercase mb-16">
+          Wedding Invitation
+        </p>
+        <button className="text-[#E7B84A] border border-[#E7B84A]/30 px-8 py-3 rounded-sm text-[10px] uppercase tracking-[0.3em] hover:bg-[#E7B84A] hover:text-black transition-all duration-500 animate-pulse">
+          点击开启
+        </button>
+      </div>
 
       <button 
         onClick={toggleMusic}
