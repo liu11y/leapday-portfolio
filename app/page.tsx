@@ -9,7 +9,7 @@ const DATASET = 'production';
 const API_VERSION = '2024-04-21';
 
 /**
- * 顶级智能图片优化引擎
+ * 顶级智能资源优化引擎 (图片/视频通用)
  */
 const optimizeImage = (url: any, width = 1200, quality = 75) => {
   if (!url) return ""; 
@@ -40,7 +40,7 @@ const optimizeImage = (url: any, width = 1200, quality = 75) => {
     console.warn("URL 解码失败:", e);
   }
 
-  if (finalUrl.includes('cdn.sanity.io')) {
+  if (finalUrl.includes('cdn.sanity.io') && !finalUrl.includes('.mp4')) {
     return `${finalUrl}?w=${width}&q=${quality}&auto=format&fit=max`;
   }
   
@@ -54,7 +54,6 @@ const ProgressiveImage = ({ src, lqip, alt, imgClassName = "" }: any) => {
 
   return (
     <div className="relative w-full h-full bg-[#0a0a0a] overflow-hidden">
-      {/* 模糊占位图 */}
       {lqip && !isLoaded && (
         <img
           src={lqip}
@@ -68,7 +67,7 @@ const ProgressiveImage = ({ src, lqip, alt, imgClassName = "" }: any) => {
         loading="lazy"
         onLoad={() => setIsLoaded(true)}
         onError={() => {
-          console.error("图片加载失败，请检查链接:", src);
+          console.error("图片加载失败:", src);
           setError(true);
         }}
         className={`w-full h-full object-cover transition-opacity duration-1000 ${
@@ -85,7 +84,7 @@ const ProgressiveImage = ({ src, lqip, alt, imgClassName = "" }: any) => {
   );
 };
 
-// --- 3. 页面滚动出现动画钩子 ---
+// --- 3. 动画钩子 ---
 const useFadeIn = () => {
   const domRef = useRef<HTMLDivElement>(null);
   const [isVisible, setVisible] = useState(false);
@@ -108,28 +107,27 @@ const FadeInSection = ({ children, delay = 0, className = "" }: any) => {
   );
 };
 
-// --- 4. 子页面组件 ---
+// --- 4. 视图组件 ---
 
-// 【首页视图】
 const Home = ({ collections, settings }: any) => {
   const heroImg = optimizeImage(
     settings?.heroImageUrl || settings?.heroImage || collections[0]?.coverImageUrl || collections[0]?.coverImage, 
     2000
   );
-  const heroVideo = settings?.heroVideo; 
+  
+  // 智能抓取视频：优先外部加速链接，其次 Sanity 内部上传
+  const rawVideoUrl = settings?.heroVideoUrl || settings?.heroVideo;
+  const heroVideo = rawVideoUrl ? optimizeImage(rawVideoUrl) : null;
 
   const videoRef = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     if (videoRef.current && heroVideo) {
       videoRef.current.defaultMuted = true;
       videoRef.current.muted = true;
-      videoRef.current.play().catch(error => {
-        console.warn("手机端自动播放被拦截:", error);
-      });
+      videoRef.current.play().catch(() => {});
     }
   }, [heroVideo]);
 
-  // 智能检测：是否填写了标题或副标题
   const hasText = Boolean(settings?.mainTitle || settings?.subtitle);
 
   return (
@@ -141,18 +139,19 @@ const Home = ({ collections, settings }: any) => {
               ref={videoRef}
               src={heroVideo} 
               autoPlay loop muted playsInline 
-              className={`w-full h-full object-cover scale-105 transition-all duration-1000 ${hasText ? 'opacity-80 md:opacity-70' : 'opacity-100'}`} 
+              className={`w-full h-full object-cover scale-105 transition-all duration-1000 ${hasText ? 'opacity-75 md:opacity-65' : 'opacity-100'}`} 
             />
           ) : heroImg ? (
             <ProgressiveImage 
               src={heroImg} 
               lqip={settings?.heroImageLqip} 
               alt="Hero" 
-              imgClassName={`scale-105 animate-pulse-slow transition-all duration-1000 ${hasText ? 'opacity-80 md:opacity-70' : 'opacity-100'}`} 
+              imgClassName={`scale-105 animate-pulse-slow transition-all duration-1000 ${hasText ? 'opacity-75 md:opacity-65' : 'opacity-100'}`} 
             />
           ) : (
             <div className="w-full h-full bg-[#0a0a0a]" />
           )}
+          {/* 减弱后的遮罩 */}
           <div className={`absolute inset-0 bg-gradient-to-b ${hasText ? 'from-black/10 via-black/20 to-[#0a0a0a]' : 'from-transparent via-transparent to-[#0a0a0a]'}`}></div>
         </div>
         
@@ -206,10 +205,8 @@ const Home = ({ collections, settings }: any) => {
   );
 };
 
-// 【作品集详情视图】
 const Detail = ({ collection }: any) => {
   useEffect(() => { window.scrollTo(0, 0); }, [collection._id]);
-
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white w-full overflow-x-hidden">
       <nav className="fixed top-0 left-0 w-full px-5 py-4 md:px-8 z-50 flex justify-between items-center bg-black/60 backdrop-blur-xl border-b border-white/5">
@@ -218,7 +215,6 @@ const Detail = ({ collection }: any) => {
         </a>
         <div className="text-[#E7B84A] font-bold tracking-[0.3em] text-sm uppercase">LEAPDAY</div>
       </nav>
-      
       <div className="pt-40 pb-16 md:pt-48 md:pb-32 w-full px-5 md:px-8 max-w-4xl mx-auto text-center">
         <FadeInSection>
           <h1 className="text-4xl md:text-7xl font-light mb-8 leading-tight tracking-tighter">{collection.title}</h1>
@@ -231,7 +227,6 @@ const Detail = ({ collection }: any) => {
           </div>
         </FadeInSection>
       </div>
-      
       <div className="flex flex-col items-center gap-10 md:gap-32 pb-40">
         {collection.images?.map((img: any, i: number) => (
           <FadeInSection key={i} className="max-w-6xl w-full px-0 md:px-10">
@@ -245,10 +240,8 @@ const Detail = ({ collection }: any) => {
   );
 };
 
-// 【全部作品归档视图】
 const Archive = ({ collections }: any) => {
   useEffect(() => { window.scrollTo(0, 0); }, []);
-
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-white py-8 px-5 md:p-12 w-full">
       <nav className="flex justify-between items-center mb-16 pt-12 md:pt-0">
@@ -257,7 +250,6 @@ const Archive = ({ collections }: any) => {
         </a>
         <h1 className="text-base md:text-xl tracking-[0.3em] font-normal uppercase">全部记录</h1>
       </nav>
-
       <div className="w-full max-w-7xl mx-auto">
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 md:gap-8">
           {collections.map((item: any) => (
@@ -282,7 +274,7 @@ const Archive = ({ collections }: any) => {
   );
 };
 
-// --- 5. 核心前端引擎与路由调度 ---
+// --- 5. 核心逻辑 ---
 
 const MOCK_DATA = {
   settings: {
@@ -295,23 +287,11 @@ const MOCK_DATA = {
       _id: "mock1",
       title: "Cyber City",
       date: "2025.01",
-      shortIntro: "Night walks in the neon districts. The city never sleeps.",
+      shortIntro: "Night walks in the neon districts.",
       tags: ["Street", "Night"],
       coverImageUrl: "https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=800&q=80",
       images: [
-        { url: "https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=1600&q=80" },
-        { url: "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=1600&q=80" }
-      ]
-    },
-    {
-      _id: "mock2",
-      title: "Minimalist Space",
-      date: "2024.12",
-      shortIntro: "Exploring geometric shapes and natural light.",
-      tags: ["Architecture", "Light"],
-      coverImageUrl: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=800&q=80",
-      images: [
-        { url: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1600&q=80" }
+        { url: "https://images.unsplash.com/photo-1503899036084-c55cdd92da26?auto=format&fit=crop&w=1600&q=80" }
       ]
     }
   ]
@@ -320,13 +300,13 @@ const MOCK_DATA = {
 export default function App() {
   const [currentRoute, setCurrentRoute] = useState('home');
   const [activeId, setActiveId] = useState<string | null>(null);
-  
   const [data, setData] = useState<any>({ collections: [], settings: null, loading: true, error: false, isMock: false });
   const [showDebug, setShowDebug] = useState(false);
 
   const fetchData = async () => {
     setData((prev: any) => ({ ...prev, loading: true, error: false, isMock: false }));
     try {
+      // GROQ 查询新增了 heroVideoUrl 字段
       const query = encodeURIComponent(`{
         "collections": *[_type == "collection"] | order(date desc) {
           _id, title, date, shortIntro, tags,
@@ -344,31 +324,28 @@ export default function App() {
           "heroImage": heroImage.asset->url, 
           "heroImageUrl": heroImageUrl,
           "heroImageLqip": heroImage.asset->metadata.lqip,
-          "heroVideo": heroVideo.asset->url
+          "heroVideo": heroVideo.asset->url,
+          "heroVideoUrl": heroVideoUrl
         }
       }`);
       const url = `https://${PROJECT_ID}.api.sanity.io/v${API_VERSION}/data/query/${DATASET}?query=${query}`;
       const res = await fetch(url);
-      
       if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-      
       const { result } = await res.json();
 
       const formattedCollections = (result.collections || []).map((item: any) => {
         const bulkUrls = item.bulkExternalUrls 
           ? item.bulkExternalUrls.split(/\r?\n/).map((u: string) => ({ url: u.trim() })).filter((img: any) => img.url)
           : [];
-        
         return {
           ...item,
           images: [...(item.images || []), ...bulkUrls]
         };
       });
-
       setData({ collections: formattedCollections, settings: result.settings || {}, loading: false, error: false, isMock: false });
     } catch (err) {
-      console.error("Fetch Error (可能是预览环境跨域限制，自动启用 Mock 数据):", err);
-      setData({ collections: MOCK_DATA.collections, settings: MOCK_DATA.settings, loading: false, error: false, isMock: true });
+      console.error("Fetch Error:", err);
+      setData((prev: any) => ({ ...prev, loading: false, error: true }));
     }
   };
 
@@ -387,7 +364,32 @@ export default function App() {
 
   if (data.loading) return (
     <div className="h-screen bg-[#0a0a0a] flex items-center justify-center">
-      <div className="text-[#E7B84A] animate-pulse tracking-[0.5em] text-[10px] font-mono">SYNCING</div>
+      <div className="text-[#E7B84A] animate-pulse tracking-[0.5em] text-[10px] font-mono uppercase">Syncing</div>
+    </div>
+  );
+
+  // 完整的跨域拦截容错界面：提供一键预览测试数据的选项
+  if (data.error) return (
+    <div className="min-h-screen bg-black flex flex-col items-center justify-center text-gray-400 font-mono text-[10px] p-6 text-center">
+      <AlertCircle size={32} className="mb-4 text-red-900 opacity-80" />
+      <p className="mb-2 tracking-[0.3em] text-red-500 font-bold uppercase">Sanity CORS / Fetch Error</p>
+      <div className="mb-6 max-w-lg opacity-60 leading-relaxed text-left bg-[#111] p-5 rounded-sm border border-red-900/30 shadow-2xl">
+        <p className="mb-2"><strong>请求被拒绝 (Failed to fetch)</strong>。这是由于当前右侧预览环境的临时域名触发了 Sanity 数据库的安全机制 (CORS)。</p>
+        <p className="mb-4">这<strong>并不代表代码有问题</strong>，当您在本地运行或者将代码部署到 Vercel 后，只需将正式域名添加到 Sanity 的 CORS 白名单中即可恢复正常。</p>
+        <div className="break-all bg-black p-3 text-[9px] text-gray-500 border border-white/5 font-mono">
+          被拦截的域名环境：<br/>
+          <span className="text-[#E7B84A]">{typeof window !== 'undefined' ? window.location.origin : 'unknown'}</span>
+        </div>
+      </div>
+      <div className="flex flex-wrap justify-center gap-4">
+        <button onClick={fetchData} className="px-6 py-2 border border-white/10 hover:border-[#E7B84A] hover:text-[#E7B84A] transition-all uppercase">重试连接</button>
+        <button 
+          onClick={() => setData({ collections: MOCK_DATA.collections, settings: MOCK_DATA.settings, loading: false, error: false, isMock: true })} 
+          className="px-6 py-2 bg-[#E7B84A]/10 text-[#E7B84A] hover:bg-[#E7B84A]/20 transition-all uppercase font-bold"
+        >
+          使用测试数据强制预览 UI
+        </button>
+      </div>
     </div>
   );
 
@@ -395,7 +397,6 @@ export default function App() {
 
   return (
     <div className="antialiased bg-[#0a0a0a]">
-      {/* 路由视图渲染 */}
       {currentRoute === 'home' && <Home collections={data.collections} settings={data.settings} />}
       {currentRoute === 'detail' && activeCollection && <Detail collection={activeCollection} />}
       {currentRoute === 'archive' && <Archive collections={data.collections} />}
@@ -403,12 +404,9 @@ export default function App() {
       <footer 
         className="bg-black py-24 text-center border-t border-white/5 opacity-30 text-[8px] tracking-[0.4em] uppercase cursor-pointer hover:opacity-80 transition-opacity"
         onDoubleClick={() => setShowDebug(!showDebug)}
-        title="双击调出开发者调试面板"
       >
         © {new Date().getFullYear()} LEAPDAY. ALL RIGHTS RESERVED.
         <br/><span className="mt-2 block opacity-40">Capturing Moments Through The Lens.</span>
-        
-        {/* Mock 状态警告提示 */}
         {data.isMock && (
           <span className="mt-6 text-[#E7B84A] font-bold tracking-widest bg-[#E7B84A]/10 py-2 px-4 inline-block rounded-sm">
             ⚠️ 正在使用本地测试数据 (MOCK DATA) 预览
@@ -419,13 +417,11 @@ export default function App() {
       {showDebug && (
         <div className="fixed bottom-0 left-0 w-full p-6 bg-[#111] border-t border-[#E7B84A]/30 z-[9999] text-[10px] font-mono max-h-[50vh] overflow-auto shadow-2xl">
           <div className="flex justify-between mb-4 border-b border-white/10 pb-4">
-            <span className="text-[#E7B84A] font-bold uppercase flex items-center gap-2"><Database size={12}/> Sanity 数据库连通性自检</span>
-            <button onClick={() => setShowDebug(false)} className="text-gray-500 hover:text-white">关闭 (Close)</button>
+            <span className="text-[#E7B84A] font-bold uppercase flex items-center gap-2"><Database size={12}/> 调试面板</span>
+            <button id="close-debug" onClick={() => setShowDebug(false)} className="text-gray-500 hover:text-white uppercase">Close</button>
           </div>
-          <div className="text-green-500 mb-2">Status: Connected to u6xbvj35 / production</div>
-          <p className="text-gray-500 mb-4">以下为 Sanity 传来的 Global Settings 原始数据：</p>
           <pre className="text-gray-300 bg-black p-4 rounded-sm">
-            {JSON.stringify(data.settings, null, 2)}
+            {JSON.stringify({ isMock: data.isMock, collectionsCount: data.collections.length, settings: data.settings }, null, 2)}
           </pre>
         </div>
       )}
