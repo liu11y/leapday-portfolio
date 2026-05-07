@@ -54,6 +54,7 @@ const ProgressiveImage = ({ src, lqip, alt, imgClassName = "" }: any) => {
 
   return (
     <div className="relative w-full h-full bg-[#0a0a0a] overflow-hidden">
+      {/* 模糊占位图 */}
       {lqip && !isLoaded && (
         <img
           src={lqip}
@@ -107,6 +108,138 @@ const FadeInSection = ({ children, delay = 0, className = "" }: any) => {
   );
 };
 
+// --- 🌟 新增：核心黑科技：云雾粒子文字物理引擎 ---
+const ParticleScatterText = ({ text }: { text: string }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const width = canvas.parentElement?.clientWidth || window.innerWidth;
+    const height = 250; // 给足够的高度让粒子飞散
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    ctx.scale(dpr, dpr);
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+
+    let particlesArray: any[] = [];
+    let mouse = { x: -9999, y: -9999, radius: 100 }; // 🌟 半径：数值越大，鼠标排斥范围越广
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      mouse.x = e.clientX - rect.left;
+      mouse.y = e.clientY - rect.top;
+    };
+    const handleTouchMove = (e: TouchEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      mouse.x = e.touches[0].clientX - rect.left;
+      mouse.y = e.touches[0].clientY - rect.top;
+    };
+    const handleMouseLeave = () => { mouse.x = -9999; mouse.y = -9999; };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('touchmove', handleTouchMove, { passive: true });
+    window.addEventListener('mouseout', handleMouseLeave);
+    window.addEventListener('touchend', handleMouseLeave);
+
+    const initParticles = () => {
+      particlesArray = [];
+      ctx.clearRect(0, 0, width, height);
+      
+      const isMobile = width < 768;
+      const fontSize = isMobile ? 56 : 120; // 🌟 字体大小
+      ctx.fillStyle = 'white';
+      ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, "SF Pro", sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text.toUpperCase(), width / 2, height / 2);
+
+      const textCoordinates = ctx.getImageData(0, 0, width * dpr, height * dpr);
+      ctx.clearRect(0, 0, width, height);
+
+      const step = isMobile ? 4 : 6; // 🌟 粒子密度：数值越小，粒子越密，但也越耗性能
+      
+      for (let y = 0, y2 = textCoordinates.height; y < y2; y += step) {
+        for (let x = 0, x2 = textCoordinates.width; x < x2; x += step) {
+          if (textCoordinates.data[(y * 4 * textCoordinates.width) + (x * 4) + 3] > 128) {
+            let positionX = x / dpr;
+            let positionY = y / dpr;
+            particlesArray.push({
+              x: positionX + (Math.random() - 0.5) * 10,
+              y: positionY + (Math.random() - 0.5) * 10,
+              baseX: positionX,
+              baseY: positionY,
+              size: Math.random() * 1.5 + 1, // 🌟 粒子粗细
+              density: (Math.random() * 30) + 1,
+              vx: 0,
+              vy: 0
+            });
+          }
+        }
+      }
+    };
+
+    initParticles();
+
+    let animationFrameId: number;
+    const animate = () => {
+      ctx.clearRect(0, 0, width, height);
+      ctx.fillStyle = '#E7B84A'; // 🌟 粒子颜色：高定亮金色
+      
+      for (let i = 0; i < particlesArray.length; i++) {
+        let p = particlesArray[i];
+        let dx = mouse.x - p.x;
+        let dy = mouse.y - p.y;
+        let distance = Math.sqrt(dx * dx + dy * dy);
+        let forceDirectionX = dx / distance;
+        let forceDirectionY = dy / distance;
+        let maxDistance = mouse.radius;
+        let force = (maxDistance - distance) / maxDistance;
+
+        if (distance < maxDistance) {
+          p.vx -= forceDirectionX * force * (p.density / 3);
+          p.vy -= forceDirectionY * force * (p.density / 3);
+        }
+
+        p.vx += (p.baseX - p.x) * 0.05; // 🌟 聚合速度：数值越小，恢复原状越慢，有“拉丝”感
+        p.vy += (p.baseY - p.y) * 0.05;
+        p.vx *= 0.85; // 🌟 空气摩擦力：决定粒子飞散后滑行多远
+        p.vy *= 0.85;
+        p.x += p.vx;
+        p.y += p.vy;
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.fill();
+      }
+      animationFrameId = requestAnimationFrame(animate);
+    };
+    animate();
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('mouseout', handleMouseLeave);
+      window.removeEventListener('touchend', handleMouseLeave);
+    };
+  }, [text]);
+
+  return (
+    <canvas 
+      ref={canvasRef} 
+      className="block cursor-crosshair drop-shadow-2xl z-20 relative mix-blend-screen w-full mx-auto"
+      style={{ touchAction: 'none' }}
+    />
+  );
+};
+
 // --- 4. 视图组件 ---
 
 const Home = ({ collections, settings }: any) => {
@@ -157,12 +290,11 @@ const Home = ({ collections, settings }: any) => {
         
         <div className="relative z-10 text-center px-4 w-full">
           {settings?.mainTitle && (
-            <h1 className="text-5xl sm:text-7xl md:text-8xl lg:text-9xl font-normal tracking-tighter text-[#E7B84A] drop-shadow-2xl mb-4 uppercase">
-              {settings.mainTitle}
-            </h1>
+            /* 🌟 核心替换：原本静态的 <h1> 标签已被替换为云雾粒子引擎 */
+            <ParticleScatterText text={settings.mainTitle} />
           )}
           {settings?.subtitle && (
-            <p className="text-gray-300 tracking-[0.4em] uppercase text-[10px] md:text-sm font-light opacity-60">
+            <p className="text-gray-300 tracking-[0.4em] uppercase text-[10px] md:text-sm font-light opacity-60 mt-4">
               {settings.subtitle}
             </p>
           )}
@@ -368,7 +500,7 @@ export default function App() {
     </div>
   );
 
-  // 完整的跨域拦截容错界面：提供一键预览测试数据的选项
+  // 完整的跨域拦截容错界面
   if (data.error) return (
     <div className="min-h-screen bg-black flex flex-col items-center justify-center text-gray-400 font-mono text-[10px] p-6 text-center">
       <AlertCircle size={32} className="mb-4 text-red-900 opacity-80" />
